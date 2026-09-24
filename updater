@@ -1,685 +1,226 @@
 --============================================================
 -- FTAL 334
--- GITHUB UPDATER
---============================================================
--- MAIN SOURCE:
--- https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/ftal
---
--- This updater downloads the current GitHub source,
--- applies the requested updates in memory, then executes it.
+-- COMBINED GITHUB UPDATER // FTAL 334 + RAGEBOT
 --============================================================
 
 local SOURCE =
     "https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/ftal"
 
-local source = game:HttpGet(SOURCE)
+--============================================================
+-- LOAD AUTHORITATIVE SOURCE
+--============================================================
+
+local ok, source = pcall(function()
+    return game:HttpGet(SOURCE)
+end)
+
+if not ok or type(source) ~= "string" or #source < 1000 then
+    error(
+        "[FTAL 334] Failed to download authoritative source."
+    )
+end
+
+print(
+    "[FTAL 334] Source loaded:",
+    #source,
+    "bytes"
+)
 
 --============================================================
 -- PATCH HELPERS
 --============================================================
 
-local function replaceOnce(src,old,new)
-    local a,b = string.find(src,old,1,true)
+local function replaceOnce(src, old, new, name)
+    local a, b = string.find(src, old, 1, true)
 
     if not a then
-        warn("[FTAL 334] Patch target not found.")
-        return src,false
+        warn(
+            "[FTAL 334] PATCH FAILED:",
+            name or "unnamed patch"
+        )
+        return src, false
     end
 
-    return
-        string.sub(src,1,a-1) ..
-        new ..
-        string.sub(src,b+1),
-        true
-end
+    local result =
+        string.sub(src, 1, a - 1)
+        ..
+        new
+        ..
+        string.sub(src, b + 1)
 
-local function replaceBetween(src,startText,endText,replacement)
-    local a = string.find(src,startText,1,true)
-
-    if not a then
-        warn("[FTAL 334] Start patch target not found.")
-        return src,false
-    end
-
-    local b = string.find(src,endText,a+1,true)
-
-    if not b then
-        warn("[FTAL 334] End patch target not found.")
-        return src,false
-    end
-
-    return
-        string.sub(src,1,a-1) ..
-        replacement ..
-        string.sub(src,b),
-        true
-end
-
---============================================================
--- 1. SELECTOR DROPDOWNS
--- OVERLAY THE ENTIRE UI
---============================================================
-
-do
-
-    local replacement = [[
-local function Selector(page,title,description,options,current,callback)
-
-    local c = Card(page,58)
-
-    local t = Instance.new("TextLabel")
-    t.BackgroundTransparency = 1
-    t.Position = UDim2.fromOffset(13,5)
-    t.Size = UDim2.new(1,-195,0,21)
-    t.Font = Enum.Font.Gotham
-    t.Text = title
-    t.TextSize = 12
-    t.TextColor3 = Theme.Text
-    t.TextXAlignment = Enum.TextXAlignment.Left
-    t.Parent = c
-
-    local d = Instance.new("TextLabel")
-    d.BackgroundTransparency = 1
-    d.Position = UDim2.fromOffset(13,27)
-    d.Size = UDim2.new(1,-195,0,17)
-    d.Font = Enum.Font.Gotham
-    d.Text = description or ""
-    d.TextSize = 9
-    d.TextColor3 = Theme.Muted
-    d.TextXAlignment = Enum.TextXAlignment.Left
-    d.Parent = c
-
-    local b = Instance.new("TextButton")
-    b.Position = UDim2.new(1,-180,.5,-15)
-    b.Size = UDim2.fromOffset(168,30)
-    b.BackgroundColor3 = Theme.Card2
-    b.BorderSizePixel = 0
-    b.Font = Enum.Font.GothamBold
-    b.Text = current
-    b.TextSize = 9
-    b.TextColor3 = Theme.Text
-    b.Parent = c
-
-    Round(b,5)
-    Stroke(b,Theme.Border)
-
-    local dropdown
-    local opened = false
-
-    local function close()
-        if dropdown then
-            dropdown:Destroy()
-            dropdown = nil
-        end
-
-        opened = false
-    end
-
-    Connect(b.MouseButton1Click,function()
-
-        if opened then
-            close()
-            return
-        end
-
-        opened = true
-
-        dropdown = Instance.new("Frame")
-        dropdown.Size =
-            UDim2.fromOffset(
-                168,
-                #options * 29
-            )
-
-        dropdown.BackgroundColor3 = Theme.Card2
-        dropdown.BorderSizePixel = 0
-        dropdown.ZIndex = 999
-        dropdown.Parent = Gui
-
-        local p = b.AbsolutePosition
-
-        dropdown.Position =
-            UDim2.fromOffset(
-                p.X,
-                p.Y + b.AbsoluteSize.Y + 3
-            )
-
-        Round(dropdown,5)
-        Stroke(dropdown,Theme.Border)
-
-        local layout = Instance.new("UIListLayout")
-        layout.Parent = dropdown
-
-        for _,option in ipairs(options) do
-
-            local o = Instance.new("TextButton")
-
-            o.Size = UDim2.new(1,0,0,29)
-            o.BackgroundTransparency = 1
-            o.Font = Enum.Font.Gotham
-            o.Text = option
-            o.TextSize = 9
-            o.TextColor3 = Theme.Text
-            o.ZIndex = 1000
-            o.Parent = dropdown
-
-            Connect(o.MouseButton1Click,function()
-
-                b.Text = option
-
-                callback(option)
-
-                close()
-            end)
-        end
-    end)
-
-    return c
-end
-]]
-
-    source = replaceBetween(
-        source,
-        "local function Selector(",
-        "\n--============================================================\n-- SLIDER",
-        replacement
-    )
-end
-
---============================================================
--- 2. TWEEN
--- SELECTING A PLAYER NO LONGER AUTOMATICALLY STARTS TWEEN
---============================================================
-
-do
-
-    source = source:gsub(
-        "b%.BackgroundColor3 = Theme%.Border\n%s*StartTween%(%)[\r\n]+%s*end%)",
-        "b.BackgroundColor3 = Theme.Border\n            end)"
+    print(
+        "[FTAL 334] PATCH OK:",
+        name or "unnamed patch"
     )
 
+    return result, true
+end
+
+local function assertPatch(okPatch, name)
+    if not okPatch then
+        error(
+            "[FTAL 334] Required patch failed: "
+            ..
+            tostring(name)
+        )
+    end
 end
 
 --============================================================
--- 3. FLING
--- BETTER START VALIDATION
+-- 1. ADD RAGEBOT STATE
 --============================================================
 
 do
-
     local old = [[
-Connect(FlingStart.MouseButton1Click,function()
-
-    if FlingActive then return end
-
-    FlingActive = true
-
-    FlingLoop = task.spawn(function()
-
-        while FlingActive do
-
-            for player in pairs(FlingTargets) do
-
-                if not FlingActive then
-                    break
-                end
-
-                if player.Parent then
-                    FlingPlayer(player)
-                else
-                    FlingTargets[player] = nil
-                end
-
-                task.wait(.1)
-            end
-
-            task.wait(.15)
-        end
-    end)
-end)
+    AimbotHolding = false,
 ]]
 
     local new = [[
-Connect(FlingStart.MouseButton1Click,function()
-
-    if FlingActive then
-        return
-    end
-
-    local hasTarget = false
-
-    for player in pairs(FlingTargets) do
-
-        if player
-            and player.Parent
-            and player.Character
-            and player.Character:FindFirstChild("HumanoidRootPart") then
-
-            hasTarget = true
-            break
-
-        else
-            FlingTargets[player] = nil
-        end
-    end
-
-    if not hasTarget then
-        return
-    end
-
-    FlingActive = true
-
-    if FlingLoop then
-        pcall(function()
-            task.cancel(FlingLoop)
-        end)
-
-        FlingLoop = nil
-    end
-
-    FlingLoop = task.spawn(function()
-
-        while FlingActive do
-
-            local didTarget = false
-
-            for player in pairs(FlingTargets) do
-
-                if not FlingActive then
-                    break
-                end
-
-                if player.Parent
-                    and player.Character
-                    and player.Character:FindFirstChild("HumanoidRootPart") then
-
-                    didTarget = true
-
-                    FlingPlayer(player)
-
-                else
-                    FlingTargets[player] = nil
-                end
-
-                task.wait(.1)
-            end
-
-            if not didTarget then
-
-                FlingActive = false
-
-                break
-            end
-
-            task.wait(.15)
-        end
-
-        FlingLoop = nil
-    end)
-end)
-]]
-
-    source = replaceOnce(source,old,new)
-
-end
-
---============================================================
--- 4. ESP BOX
--- REAL 3D CHARACTER BOUNDING BOX
---============================================================
-
-do
-
-    local replacement = [[
-local function DrawBox(data,char,color)
-
-    local cf,size = char:GetBoundingBox()
-    local half = size * .5
-
-    local corners = {
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                -half.X,
-                -half.Y,
-                -half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                -half.X,
-                -half.Y,
-                half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                -half.X,
-                half.Y,
-                -half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                -half.X,
-                half.Y,
-                half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                half.X,
-                -half.Y,
-                -half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                half.X,
-                -half.Y,
-                half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                half.X,
-                half.Y,
-                -half.Z
-            )
-        ),
-
-        cf:PointToWorldSpace(
-            Vector3.new(
-                half.X,
-                half.Y,
-                half.Z
-            )
-        ),
-    }
-
-    local minX = math.huge
-    local minY = math.huge
-    local maxX = -math.huge
-    local maxY = -math.huge
-
-    local visible = false
-
-    for _,point in ipairs(corners) do
-
-        local pos,onScreen =
-            Camera:WorldToViewportPoint(point)
-
-        if onScreen and pos.Z > 0 then
-
-            visible = true
-
-            minX = math.min(minX,pos.X)
-            minY = math.min(minY,pos.Y)
-
-            maxX = math.max(maxX,pos.X)
-            maxY = math.max(maxY,pos.Y)
-        end
-    end
-
-    if not visible then
-
-        for _,line in ipairs(data.Box) do
-            line.Visible = false
-        end
-
-        return
-    end
-
-    local tl =
-        Vector2.new(minX,minY)
-
-    local tr =
-        Vector2.new(maxX,minY)
-
-    local br =
-        Vector2.new(maxX,maxY)
-
-    local bl =
-        Vector2.new(minX,maxY)
-
-    SetLine(
-        data.Box[1],
-        tl,
-        tr,
-        color,
-        1
-    )
-
-    SetLine(
-        data.Box[2],
-        tr,
-        br,
-        color,
-        1
-    )
-
-    SetLine(
-        data.Box[3],
-        br,
-        bl,
-        color,
-        1
-    )
-
-    SetLine(
-        data.Box[4],
-        bl,
-        tl,
-        color,
-        1
-    )
-end
-]]
-
-    source = replaceBetween(
-        source,
-        "local function DrawBox(data,char,color)",
-        "\nlocal SkeletonPairs = {",
-        replacement
-    )
-
-end
-
---============================================================
--- 5. ESP SKELETON
---============================================================
-
-do
-
-    local replacement = [[
-local R15SkeletonPairs = {
-
-    {"Head","UpperTorso"},
-    {"UpperTorso","LowerTorso"},
-
-    {"UpperTorso","LeftUpperArm"},
-    {"LeftUpperArm","LeftLowerArm"},
-    {"LeftLowerArm","LeftHand"},
-
-    {"UpperTorso","RightUpperArm"},
-    {"RightUpperArm","RightLowerArm"},
-    {"RightLowerArm","RightHand"},
-
-    {"LowerTorso","LeftUpperLeg"},
-    {"LeftUpperLeg","LeftLowerLeg"},
-    {"LeftLowerLeg","LeftFoot"},
-
-    {"LowerTorso","RightUpperLeg"},
-    {"RightUpperLeg","RightLowerLeg"},
-    {"RightLowerLeg","RightFoot"},
-}
-
-local R6SkeletonPairs = {
-
-    {"Head","Torso"},
-
-    {"Torso","Left Arm"},
-    {"Torso","Right Arm"},
-
-    {"Torso","Left Leg"},
-    {"Torso","Right Leg"},
-}
-
-local SkeletonPairs = R15SkeletonPairs
-
-]]
-
-    source = replaceBetween(
-        source,
-        "local SkeletonPairs = {",
-        "local function DrawSkeleton",
-        replacement
-    )
-
-end
-
---============================================================
--- 6. ESP SKELETON DRAW
---============================================================
-
-do
-
-    local replacement = [[
-local function DrawSkeleton(data,char,color)
-
-    local pairsToUse
-
-    if char:FindFirstChild("UpperTorso")
-        and char:FindFirstChild("LowerTorso") then
-
-        pairsToUse = R15SkeletonPairs
-
-    else
-
-        pairsToUse = R6SkeletonPairs
-    end
-
-    local lineIndex = 1
-
-    for _,pair in ipairs(pairsToUse) do
-
-        local a =
-            char:FindFirstChild(pair[1])
-
-        local b =
-            char:FindFirstChild(pair[2])
-
-        if a
-            and b
-            and a ~= b
-            and lineIndex <= #data.Skeleton then
-
-            local ap = Project(a)
-            local bp = Project(b)
-
-            if ap and bp then
-
-                SetLine(
-                    data.Skeleton[lineIndex],
-                    ap,
-                    bp,
-                    color,
-                    1
-                )
-
-            else
-
-                data.Skeleton[lineIndex].Visible = false
-            end
-
-            lineIndex += 1
-        end
-    end
-
-    for i=lineIndex,#data.Skeleton do
-        data.Skeleton[i].Visible = false
-    end
-end
-]]
-
-    source = replaceBetween(
-        source,
-        "local function DrawSkeleton(data,char,color)",
-        "\nConnect(RunService.RenderStepped,function()",
-        replacement
-    )
-
-end
-
---============================================================
--- 7. ADD NEW STATE
---============================================================
-
-do
-
-    local marker = [[
-    AimbotHolding = false,
-]]
-
-    local addition = [[
     AimbotHolding = false,
 
-    -- RAGE
-    RAGE = false,
+    --========================================================
+    -- RAGEBOT
+    --========================================================
 
-    -- Triggerbot
-    Triggerbot = false,
-    TriggerbotRange = 150,
+    RageBot = false,
+    RageAutoShoot = true,
+    RageHitChance = 100,
+    RageFireRate = 30,
 
-    -- Aimbot keybind
-    AimbotKeyType = "Mouse",
-    AimbotKey = Enum.UserInputType.MouseButton1,
-    WaitingForAimbotKey = false,
+    RageAimPart = "Head",
+    RageTargetMode = "Closest to Cursor",
+    RagePriority = "None",
 
-    -- Keybind list
-    KeybindList = true,
+    RageDistance = 2000,
+    RageFOV = 1000,
+
+    RageTeamCheck = false,
+    RageWallCheck = true,
+
+    RageMultiPoint = false,
+    RageScanPixels = 20,
+
+    RageSpinbot = true,
+    RageSpinSpeed = 900,
+
+    RageSpeedHack = false,
+    RageWalkSpeed = 100,
+
+    RageJumpHack = false,
+    RageJumpPower = 100,
+
+    RageInfiniteJump = false,
+    RageBunnyHop = false,
+
+    RageThirdPerson = true,
+    RageShiftLock = true,
+
+    RageNoSpread = false,
+    RageNoRecoil = false,
+
+    RageAutoReload = false,
+    RageReloadKey = Enum.KeyCode.R,
+
+    RageKeybindList = true,
 ]]
 
-    source = replaceOnce(
-        source,
-        marker,
-        addition
-    )
+    local patched
 
+    source, patched =
+        replaceOnce(
+            source,
+            old,
+            new,
+            "RageBot state"
+        )
+
+    assertPatch(
+        patched,
+        "RageBot state"
+    )
 end
 
 --============================================================
--- 8. ADD RAGE TO AUTO
+-- 2. CREATE RAGEBOT PAGE
 --============================================================
 
 do
+    local old =
+        'local Settings = CreatePage("Settings")'
 
-    local marker = [[
-Section(Auto,"Combat")
-
+    local new = [[
+local Settings = CreatePage("Settings")
+local RageBotPage = CreatePage("RageBot")
 ]]
 
-    local addition = [[
-Section(Auto,"Combat")
+    local patched
+
+    source, patched =
+        replaceOnce(
+            source,
+            old,
+            new,
+            "RageBot page"
+        )
+
+    assertPatch(
+        patched,
+        "RageBot page"
+    )
+end
+
+--============================================================
+-- 3. CREATE RAGEBOT TAB
+--============================================================
+
+do
+    local old =
+        'CreateTab("Settings","⚙")'
+
+    local new = [[
+CreateTab("Settings","⚙")
+CreateTab("RageBot","☠")
+]]
+
+    local patched
+
+    source, patched =
+        replaceOnce(
+            source,
+            old,
+            new,
+            "RageBot tab"
+        )
+
+    assertPatch(
+        patched,
+        "RageBot tab"
+    )
+end
+
+--============================================================
+-- 4. RAGEBOT UI
+--============================================================
+
+do
+    local RageUI = [[
+
+--============================================================
+-- RAGEBOT
+--============================================================
+
+Section(
+    RageBotPage,
+    "RAGEBOT"
+)
 
 Toggle(
-    Auto,
-    "RAGE",
-    "Spinbot + Aimbot + Triggerbot.",
+    RageBotPage,
+    "Enable RageBot",
+    "Enable the RageBot controller.",
     false,
     function(v)
-
-        Hub.State.RAGE = v
-
-        Hub.State.Spinbot = v
-        Hub.State.Aimbot = v
-        Hub.State.Triggerbot = v
+        Hub.State.RageBot = v
 
         if not v then
             Hub.State.AimbotHolding = false
@@ -687,585 +228,728 @@ Toggle(
     end
 )
 
-Slider(
-    Auto,
-    "Triggerbot Range",
-    "Maximum visible trigger distance.",
-    10,
-    500,
-    150,
+Toggle(
+    RageBotPage,
+    "Auto Shoot",
+    "Automatically fire when a valid target enters your FOV.",
+    true,
     function(v)
+        Hub.State.RageAutoShoot = v
+    end
+)
 
-        Hub.State.TriggerbotRange =
+Slider(
+    RageBotPage,
+    "Hit Chance",
+    "Chance for automatic firing.",
+    0,
+    100,
+    100,
+    function(v)
+        Hub.State.RageHitChance =
             math.floor(v)
     end
 )
 
-]]
-
-    source = replaceOnce(
-        source,
-        marker,
-        addition
-    )
-
-end
-
---============================================================
--- 9. AIMBOT KEYBIND UI
--- DEFAULT = LEFT MOUSE
---============================================================
-
-do
-
-    local marker = [[
+Slider(
+    RageBotPage,
+    "Fire Rate",
+    "Maximum automatic firing rate.",
+    1,
+    100,
+    30,
+    function(v)
+        Hub.State.RageFireRate =
+            math.floor(v)
+    end
 )
- 
+
+--============================================================
+-- TARGETING
+--============================================================
+
+Section(
+    RageBotPage,
+    "TARGETING"
+)
+
 Selector(
-    Auto,
-    "Aimbot Method",
-]]
-
-    local addition = [[
-)
-
-local AimbotKeyCard = Card(Auto,45)
-
-local AimbotKeyLabel =
-    Instance.new("TextLabel")
-
-AimbotKeyLabel.BackgroundTransparency = 1
-AimbotKeyLabel.Position =
-    UDim2.fromOffset(13,0)
-
-AimbotKeyLabel.Size =
-    UDim2.new(1,-120,1,0)
-
-AimbotKeyLabel.Font =
-    Enum.Font.Gotham
-
-AimbotKeyLabel.Text =
-    "Aimbot Keybind"
-
-AimbotKeyLabel.TextSize = 10
-AimbotKeyLabel.TextColor3 =
-    Theme.Muted
-
-AimbotKeyLabel.TextXAlignment =
-    Enum.TextXAlignment.Left
-
-AimbotKeyLabel.Parent =
-    AimbotKeyCard
-
-local AimbotKeyButton =
-    Instance.new("TextButton")
-
-AimbotKeyButton.Position =
-    UDim2.new(1,-108,.5,-13)
-
-AimbotKeyButton.Size =
-    UDim2.fromOffset(95,27)
-
-AimbotKeyButton.BackgroundColor3 =
-    Theme.Card2
-
-AimbotKeyButton.BorderSizePixel = 0
-
-AimbotKeyButton.Font =
-    Enum.Font.GothamBold
-
-AimbotKeyButton.Text =
-    "LMB"
-
-AimbotKeyButton.TextSize = 9
-
-AimbotKeyButton.TextColor3 =
-    Theme.Text
-
-AimbotKeyButton.Parent =
-    AimbotKeyCard
-
-Round(AimbotKeyButton,5)
-Stroke(AimbotKeyButton,Theme.Border)
-
-Connect(
-    AimbotKeyButton.MouseButton1Click,
-    function()
-
-        Hub.State.WaitingForAimbotKey =
-            true
-
-        AimbotKeyButton.Text =
-            "PRESS KEY"
+    RageBotPage,
+    "Aim Part",
+    "Body part used for targeting.",
+    {
+        "Head",
+        "Torso",
+        "Closest"
+    },
+    "Head",
+    function(v)
+        Hub.State.RageAimPart = v
     end
 )
 
 Selector(
-    Auto,
-    "Aimbot Method",
-]]
-
-    source = replaceOnce(
-        source,
-        marker,
-        addition
-    )
-
-end
-
---============================================================
--- 10. REPLACE OLD RMB AIM INPUT
--- WITH CONFIGURABLE KEYBIND
---============================================================
-
-do
-
-    local old = [[
-Connect(UserInputService.InputBegan,function(input,gp)
-
-    if gp then return end
-
-    if input.UserInputType ==
-        Enum.UserInputType.MouseButton2 then
-
-        Hub.State.AimbotHolding = true
+    RageBotPage,
+    "Target Mode",
+    "How targets are selected.",
+    {
+        "Closest to Cursor",
+        "Closest",
+        "Lowest Health"
+    },
+    "Closest to Cursor",
+    function(v)
+        Hub.State.RageTargetMode = v
     end
-end)
+)
 
-Connect(UserInputService.InputEnded,function(input)
-
-    if input.UserInputType ==
-        Enum.UserInputType.MouseButton2 then
-
-        Hub.State.AimbotHolding = false
+Selector(
+    RageBotPage,
+    "Priority",
+    "Optional target priority.",
+    {
+        "None",
+        "Closest to Cursor",
+        "Closest",
+        "Lowest Health"
+    },
+    "None",
+    function(v)
+        Hub.State.RagePriority = v
     end
-end)
-]]
+)
 
-    local new = [[
-local function AimbotInputMatches(input)
-
-    if Hub.State.AimbotKeyType == "Mouse" then
-
-        return
-            input.UserInputType ==
-            Hub.State.AimbotKey
+Slider(
+    RageBotPage,
+    "Aim Distance",
+    "Maximum target distance.",
+    25,
+    5000,
+    2000,
+    function(v)
+        Hub.State.RageDistance =
+            math.floor(v)
     end
+)
 
-    return
-        input.UserInputType ==
-        Enum.UserInputType.Keyboard
-        and
-        input.KeyCode ==
-        Hub.State.AimbotKey
-end
-
-Connect(UserInputService.InputBegan,function(input,gp)
-
-    if Hub.State.WaitingForAimbotKey then
-
-        if input.UserInputType ==
-            Enum.UserInputType.Keyboard then
-
-            Hub.State.AimbotKeyType =
-                "Keyboard"
-
-            Hub.State.AimbotKey =
-                input.KeyCode
-
-            Hub.State.WaitingForAimbotKey =
-                false
-
-            AimbotKeyButton.Text =
-                input.KeyCode.Name
-
-        elseif input.UserInputType ==
-            Enum.UserInputType.MouseButton1
-            or
-            input.UserInputType ==
-            Enum.UserInputType.MouseButton2
-            or
-            input.UserInputType ==
-            Enum.UserInputType.MouseButton3 then
-
-            Hub.State.AimbotKeyType =
-                "Mouse"
-
-            Hub.State.AimbotKey =
-                input.UserInputType
-
-            Hub.State.WaitingForAimbotKey =
-                false
-
-            if input.UserInputType ==
-                Enum.UserInputType.MouseButton1 then
-
-                AimbotKeyButton.Text = "LMB"
-
-            elseif input.UserInputType ==
-                Enum.UserInputType.MouseButton2 then
-
-                AimbotKeyButton.Text = "RMB"
-
-            else
-
-                AimbotKeyButton.Text = "MMB"
-            end
-        end
-
-        return
+Slider(
+    RageBotPage,
+    "Aim FOV",
+    "Maximum screen-space FOV.",
+    25,
+    2500,
+    1000,
+    function(v)
+        Hub.State.RageFOV =
+            math.floor(v)
     end
-
-    if gp then
-        return
-    end
-
-    if AimbotInputMatches(input) then
-        Hub.State.AimbotHolding = true
-    end
-end)
-
-Connect(UserInputService.InputEnded,function(input)
-
-    if AimbotInputMatches(input) then
-        Hub.State.AimbotHolding = false
-    end
-end)
-]]
-
-    source = replaceOnce(
-        source,
-        old,
-        new
-    )
-
-end
-
---============================================================
--- 11. SETTINGS KEYBIND LIST TOGGLE
---============================================================
-
-do
-
-    local marker = [[
-Section(Settings,"Interface")
-
-]]
-
-    local addition = [[
-Section(Settings,"Interface")
+)
 
 Toggle(
-    Settings,
-    "Keybind List",
-    "Show active keybinds on screen.",
+    RageBotPage,
+    "Team Check",
+    "Ignore players on your team.",
+    false,
+    function(v)
+        Hub.State.RageTeamCheck = v
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "Wall Check",
+    "Require line of sight.",
     true,
     function(v)
+        Hub.State.RageWallCheck = v
+    end
+)
 
-        Hub.State.KeybindList = v
+--============================================================
+-- MULTI POINT
+--============================================================
 
+Section(
+    RageBotPage,
+    "MULTI-POINT"
+)
+
+Toggle(
+    RageBotPage,
+    "Multi-Point",
+    "Search additional body parts.",
+    false,
+    function(v)
+        Hub.State.RageMultiPoint = v
+    end
+)
+
+Slider(
+    RageBotPage,
+    "Scan Pixels",
+    "Additional targeting tolerance.",
+    0,
+    150,
+    20,
+    function(v)
+        Hub.State.RageScanPixels =
+            math.floor(v)
+    end
+)
+
+--============================================================
+-- SPINBOT
+--============================================================
+
+Section(
+    RageBotPage,
+    "SPINBOT"
+)
+
+Toggle(
+    RageBotPage,
+    "Spinbot",
+    "Continuously rotate the character.",
+    true,
+    function(v)
+        Hub.State.RageSpinbot = v
+    end
+)
+
+Slider(
+    RageBotPage,
+    "Spin Speed",
+    "Rotation speed in degrees per second.",
+    25,
+    2500,
+    900,
+    function(v)
+        Hub.State.RageSpinSpeed =
+            math.floor(v)
+    end
+)
+
+--============================================================
+-- MOVEMENT
+--============================================================
+
+Section(
+    RageBotPage,
+    "MOVEMENT"
+)
+
+Toggle(
+    RageBotPage,
+    "Speed Hack",
+    "Use custom WalkSpeed.",
+    false,
+    function(v)
+        Hub.State.RageSpeedHack = v
+    end
+)
+
+Slider(
+    RageBotPage,
+    "Walk Speed",
+    "WalkSpeed while enabled.",
+    16,
+    500,
+    100,
+    function(v)
+        Hub.State.RageWalkSpeed =
+            math.floor(v)
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "Jump Hack",
+    "Use custom JumpPower.",
+    false,
+    function(v)
+        Hub.State.RageJumpHack = v
+    end
+)
+
+Slider(
+    RageBotPage,
+    "Jump Power",
+    "JumpPower while enabled.",
+    50,
+    500,
+    100,
+    function(v)
+        Hub.State.RageJumpPower =
+            math.floor(v)
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "Infinite Jump",
+    "Allow jumping while airborne.",
+    false,
+    function(v)
+        Hub.State.RageInfiniteJump = v
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "Bunny Hop",
+    "Automatically jump while moving.",
+    false,
+    function(v)
+        Hub.State.RageBunnyHop = v
+    end
+)
+
+--============================================================
+-- CAMERA
+--============================================================
+
+Section(
+    RageBotPage,
+    "CAMERA"
+)
+
+Toggle(
+    RageBotPage,
+    "Third Person",
+    "Keep the character visible.",
+    true,
+    function(v)
+        Hub.State.RageThirdPerson = v
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "Shift Lock",
+    "Keep mouse lock enabled.",
+    true,
+    function(v)
+        Hub.State.RageShiftLock = v
+    end
+)
+
+--============================================================
+-- WEAPON
+--============================================================
+
+Section(
+    RageBotPage,
+    "WEAPON"
+)
+
+Toggle(
+    RageBotPage,
+    "No Spread",
+    "Attempt common local spread values.",
+    false,
+    function(v)
+        Hub.State.RageNoSpread = v
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "No Recoil",
+    "Attempt common local recoil values.",
+    false,
+    function(v)
+        Hub.State.RageNoRecoil = v
+    end
+)
+
+Toggle(
+    RageBotPage,
+    "Auto Reload",
+    "Reload when supported.",
+    false,
+    function(v)
+        Hub.State.RageAutoReload = v
+    end
+)
+
+Selector(
+    RageBotPage,
+    "Reload Key",
+    "Fallback reload key.",
+    {
+        "R",
+        "F",
+        "Q"
+    },
+    "R",
+    function(v)
+        if v == "R" then
+            Hub.State.RageReloadKey =
+                Enum.KeyCode.R
+        elseif v == "F" then
+            Hub.State.RageReloadKey =
+                Enum.KeyCode.F
+        else
+            Hub.State.RageReloadKey =
+                Enum.KeyCode.Q
+        end
+    end
+)
+
+--============================================================
+-- INTERFACE
+--============================================================
+
+Section(
+    RageBotPage,
+    "INTERFACE"
+)
+
+Toggle(
+    RageBotPage,
+    "Rage Keybind List",
+    "Display RageBot status.",
+    true,
+    function(v)
+        Hub.State.RageKeybindList = v
     end
 )
 
 ]]
 
-    source = replaceOnce(
-        source,
-        marker,
-        addition
-    )
+    local marker =
+        "--============================================================\n" ..
+        "-- MOVEMENT\n" ..
+        "--============================================================"
 
+    local patched
+
+    source, patched =
+        replaceOnce(
+            source,
+            marker,
+            RageUI ..
+            "\n" ..
+            marker,
+            "RageBot UI"
+        )
+
+    assertPatch(
+        patched,
+        "RageBot UI"
+    )
 end
 
 --============================================================
--- 12. RUNTIME PATCH
---
--- RAGE:
---   • Spinbot
---   • Aimbot
---   • Triggerbot
---   • Third person
---
--- SPINBOT:
---   • Does not take control of camera
---   • Humanoid AutoRotate disabled
---   • Camera remains freely controllable
---   • Shift lock remains usable
---
--- TRIGGERBOT:
---   • Checks center of screen
---   • Requires actual visible enemy
---   • Holds left click while target is visible
+-- 5. VERIFY RAGEBOT PATCH
+--============================================================
+
+do
+    local required = {
+        'local RageBotPage = CreatePage("RageBot")',
+        'CreateTab("RageBot","☠")',
+        'Hub.State.RageBot',
+    }
+
+    for _, needle in ipairs(required) do
+        if not string.find(
+            source,
+            needle,
+            1,
+            true
+        ) then
+            error(
+                "[FTAL 334] RageBot verification failed: "
+                ..
+                needle
+            )
+        end
+    end
+
+    print(
+        "[FTAL 334] RageBot page verified."
+    )
+
+    print(
+        "[FTAL 334] RageBot tab verified."
+    )
+
+    print(
+        "[FTAL 334] RageBot UI verified."
+    )
+end
+
+--============================================================
+-- 6. RAGEBOT RUNTIME
 --============================================================
 
 source = source .. [[
 
 --============================================================
--- FTAL 334 GITHUB UPDATE RUNTIME
+-- FTAL 334
+-- RAGEBOT RUNTIME
 --============================================================
 
 do
 
-    local RagePreviousCameraMode
-    local RagePreviousMinZoom
-    local RagePreviousMaxZoom
-    local RagePreviousMouseLock
+    local LastShot = 0
+    local LastTarget = nil
 
-    local RageCameraSaved = false
+    local SavedWalkSpeed = nil
+    local SavedJumpPower = nil
+    local SavedAutoRotate = nil
 
-    local TriggerHeld = false
+    local CameraSaved = false
+    local SavedCameraMode
+    local SavedMinZoom
+    local SavedMaxZoom
+
+    local RageOverlay = nil
 
     --========================================================
-    -- INPUT NAME
+    -- CHARACTER
     --========================================================
 
-    local function GetKeybindName()
-
-        if Hub.State.AimbotKeyType == "Keyboard" then
-
-            if Hub.State.AimbotKey then
-                return Hub.State.AimbotKey.Name
-            end
-
-            return "NONE"
-        end
-
-        if Hub.State.AimbotKey ==
-            Enum.UserInputType.MouseButton1 then
-
-            return "LMB"
-
-        elseif Hub.State.AimbotKey ==
-            Enum.UserInputType.MouseButton2 then
-
-            return "RMB"
-
-        elseif Hub.State.AimbotKey ==
-            Enum.UserInputType.MouseButton3 then
-
-            return "MMB"
-        end
-
-        return "NONE"
+    local function Character()
+        return LocalPlayer.Character
     end
 
-    --========================================================
-    -- FORCE THIRD PERSON FOR RAGE
-    --========================================================
+    local function Humanoid()
+        local character = Character()
 
-    local function SetRageCamera(active)
-
-        if active then
-
-            if not RageCameraSaved then
-
-                RagePreviousCameraMode =
-                    LocalPlayer.CameraMode
-
-                RagePreviousMinZoom =
-                    LocalPlayer.CameraMinZoomDistance
-
-                RagePreviousMaxZoom =
-                    LocalPlayer.CameraMaxZoomDistance
-
-                pcall(function()
-                    RagePreviousMouseLock =
-                        LocalPlayer.DevEnableMouseLock
-                end)
-
-                RageCameraSaved = true
-            end
-
-            LocalPlayer.CameraMode =
-                Enum.CameraMode.Classic
-
-            LocalPlayer.CameraMinZoomDistance =
-                8
-
-            LocalPlayer.CameraMaxZoomDistance =
-                14
-
-            pcall(function()
-
-                LocalPlayer.DevEnableMouseLock =
-                    true
-
-            end)
-
-            Camera.CameraType =
-                Enum.CameraType.Custom
-
-        else
-
-            if RageCameraSaved then
-
-                LocalPlayer.CameraMode =
-                    RagePreviousCameraMode
-                    or Enum.CameraMode.Classic
-
-                LocalPlayer.CameraMinZoomDistance =
-                    RagePreviousMinZoom
-                    or .5
-
-                LocalPlayer.CameraMaxZoomDistance =
-                    RagePreviousMaxZoom
-                    or 12.5
-
-                pcall(function()
-
-                    if RagePreviousMouseLock ~= nil then
-
-                        LocalPlayer.DevEnableMouseLock =
-                            RagePreviousMouseLock
-                    end
-
-                end)
-            end
-
-            RageCameraSaved = false
+        if not character then
+            return nil
         end
+
+        return character:FindFirstChildOfClass(
+            "Humanoid"
+        )
     end
 
-    --========================================================
-    -- SPINBOT
-    -- CAMERA IS NEVER ROTATED BY THE SPIN
-    --========================================================
+    local function Root(player)
+        player = player or LocalPlayer
 
-    Connect(
-        RunService.RenderStepped,
-        function()
+        local character = player.Character
 
-            local spinning =
-                Hub.State.Spinbot == true
-
-            local character =
-                LocalPlayer.Character
-
-            local root =
-                character
-                and
-                character:FindFirstChild(
-                    "HumanoidRootPart"
-                )
-
-            local humanoid =
-                character
-                and
-                character:FindFirstChildOfClass(
-                    "Humanoid"
-                )
-
-            if spinning then
-
-                if humanoid then
-
-                    humanoid.AutoRotate = false
-                end
-
-                if root then
-
-                    local position =
-                        root.Position
-
-                    local rotation =
-                        CFrame.Angles(
-                            0,
-                            math.rad(
-                                Hub.State.SpinbotSpeed
-                            ),
-                            0
-                        )
-
-                    root.CFrame =
-                        CFrame.new(position)
-                        * rotation
-                end
-
-            elseif humanoid then
-
-                humanoid.AutoRotate = true
-            end
+        if not character then
+            return nil
         end
-    )
 
-    --========================================================
-    -- RAGE CAMERA
-    --========================================================
+        return character:FindFirstChild(
+            "HumanoidRootPart"
+        )
+    end
 
-    Connect(
-        RunService.RenderStepped,
-        function()
-
-            if Hub.State.RAGE then
-
-                SetRageCamera(true)
-
-            else
-
-                SetRageCamera(false)
-            end
-        end
-    )
-
-    --========================================================
-    -- TRIGGERBOT HELPERS
-    --========================================================
-
-    local function IsTriggerEnemy(player)
-
-        if not player
-            or player == LocalPlayer then
-
+    local function Alive(player)
+        if not player then
             return false
         end
 
-        if Hub.State.AimbotTeamCheck
-            and LocalPlayer.Team
-            and player.Team
-            and LocalPlayer.Team ==
-                player.Team then
+        local character =
+            player.Character
 
+        if not character then
+            return false
+        end
+
+        local humanoid =
+            character:FindFirstChildOfClass(
+                "Humanoid"
+            )
+
+        return
+            humanoid ~= nil
+            and
+            humanoid.Health > 0
+    end
+
+    --========================================================
+    -- ENEMY CHECK
+    --========================================================
+
+    local function Enemy(player)
+
+        if not player
+            or
+            player == LocalPlayer
+        then
+            return false
+        end
+
+        if not Alive(player) then
+            return false
+        end
+
+        if
+            Hub.State.RageTeamCheck
+            and
+            LocalPlayer.Team
+            and
+            player.Team
+            and
+            LocalPlayer.Team == player.Team
+        then
             return false
         end
 
         return true
     end
 
-    local function GetTriggerTarget()
+    --========================================================
+    -- BODY PARTS
+    --========================================================
+
+    local BodyParts = {
+        "Head",
+        "UpperTorso",
+        "Torso",
+        "LowerTorso",
+        "HumanoidRootPart",
+
+        "LeftUpperArm",
+        "RightUpperArm",
+        "LeftLowerArm",
+        "RightLowerArm",
+
+        "LeftUpperLeg",
+        "RightUpperLeg",
+        "LeftLowerLeg",
+        "RightLowerLeg",
+
+        "LeftHand",
+        "RightHand",
+        "LeftFoot",
+        "RightFoot",
+    }
+
+    --========================================================
+    -- AIM PART
+    --========================================================
+
+    local function GetAimPart(player)
 
         local character =
-            LocalPlayer.Character
+            player.Character
 
-        local myRoot =
-            character
-            and
-            character:FindFirstChild(
-                "HumanoidRootPart"
-            )
-
-        if not myRoot then
+        if not character then
             return nil
         end
 
-        local viewport =
-            Camera.ViewportSize
+        local mode =
+            Hub.State.RageAimPart
 
-        local centerX =
-            viewport.X / 2
+        if mode == "Head" then
 
-        local centerY =
-            viewport.Y / 2
+            return
+                character:FindFirstChild("Head")
+                or
+                character:FindFirstChild(
+                    "HumanoidRootPart"
+                )
 
-        local ray =
-            Camera:ViewportPointToRay(
-                centerX,
-                centerY
-            )
+        elseif mode == "Torso" then
+
+            return
+                character:FindFirstChild(
+                    "UpperTorso"
+                )
+                or
+                character:FindFirstChild("Torso")
+                or
+                character:FindFirstChild(
+                    "LowerTorso"
+                )
+                or
+                character:FindFirstChild(
+                    "HumanoidRootPart"
+                )
+        end
+
+        --====================================================
+        -- CLOSEST BODY PART
+        --====================================================
+
+        local mouse =
+            UserInputService:GetMouseLocation()
+
+        local closest = nil
+        local closestDistance = math.huge
+
+        for _, name in ipairs(BodyParts) do
+
+            local part =
+                character:FindFirstChild(name)
+
+            if part then
+
+                local screenPos,
+                    onScreen =
+                    Camera:WorldToViewportPoint(
+                        part.Position
+                    )
+
+                if
+                    onScreen
+                    and
+                    screenPos.Z > 0
+                then
+
+                    local screen =
+                        Vector2.new(
+                            screenPos.X,
+                            screenPos.Y
+                        )
+
+                    local distance =
+                        (
+                            screen -
+                            mouse
+                        ).Magnitude
+
+                    if distance < closestDistance then
+
+                        closestDistance =
+                            distance
+
+                        closest = part
+                    end
+                end
+            end
+        end
+
+        return closest
+    end
+
+    --========================================================
+    -- WALL CHECK
+    --========================================================
+
+    local function Visible(player, part)
+
+        if not Hub.State.RageWallCheck then
+            return true
+        end
+
+        local myCharacter =
+            Character()
+
+        if
+            not myCharacter
+            or
+            not player
+            or
+            not player.Character
+            or
+            not part
+        then
+            return false
+        end
+
+        local origin =
+            Camera.CFrame.Position
 
         local direction =
-            ray.Direction
-            *
-            (Hub.State.TriggerbotRange or 150)
+            part.Position - origin
 
         local params =
             RaycastParams.new()
@@ -1274,89 +958,696 @@ do
             Enum.RaycastFilterType.Exclude
 
         params.FilterDescendantsInstances = {
-            character
+            myCharacter
         }
 
         local result =
             workspace:Raycast(
-                ray.Origin,
+                origin,
                 direction,
                 params
             )
 
+        -- Nothing blocked the ray.
         if not result then
-            return nil
+            return true
         end
 
-        local hit =
-            result.Instance
-
-        local targetCharacter =
-            hit:FindFirstAncestorOfClass(
-                "Model"
-            )
-
-        if not targetCharacter then
-            return nil
-        end
-
-        local targetPlayer =
-            Players:GetPlayerFromCharacter(
-                targetCharacter
-            )
-
-        if not IsTriggerEnemy(targetPlayer) then
-            return nil
-        end
-
-        local humanoid =
-            targetCharacter:FindFirstChildOfClass(
-                "Humanoid"
-            )
-
-        if not humanoid
-            or humanoid.Health <= 0 then
-
-            return nil
-        end
-
-        local targetRoot =
-            targetCharacter:FindFirstChild(
-                "HumanoidRootPart"
-            )
-
-        if not targetRoot then
-            return nil
-        end
-
-        local distance =
-            (
-                myRoot.Position -
-                targetRoot.Position
-            ).Magnitude
-
-        if distance >
-            (Hub.State.TriggerbotRange or 150) then
-
-            return nil
-        end
-
-        return targetPlayer
+        return result.Instance:IsDescendantOf(
+            player.Character
+        )
     end
 
     --========================================================
-    -- LEFT CLICK
+    -- DISTANCE
     --========================================================
 
-    local function HoldLeftClick()
+    local function InDistance(player)
 
-        if TriggerHeld then
+        local mine =
+            Root(LocalPlayer)
+
+        local theirs =
+            Root(player)
+
+        if
+            not mine
+            or
+            not theirs
+        then
+            return false
+        end
+
+        return
+            (
+                mine.Position -
+                theirs.Position
+            ).Magnitude
+            <=
+            (
+                tonumber(
+                    Hub.State.RageDistance
+                )
+                or
+                2000
+            )
+    end
+
+    --========================================================
+    -- SCREEN DATA
+    --========================================================
+
+    local function GetScreenDistance(part)
+
+        if not part then
+            return nil
+        end
+
+        local position,
+            onScreen =
+            Camera:WorldToViewportPoint(
+                part.Position
+            )
+
+        if
+            not onScreen
+            or
+            position.Z <= 0
+        then
+            return nil
+        end
+
+        local screen =
+            Vector2.new(
+                position.X,
+                position.Y
+            )
+
+        local mouse =
+            UserInputService:GetMouseLocation()
+
+        return
+            (
+                screen -
+                mouse
+            ).Magnitude,
+            screen
+    end
+
+    --========================================================
+    -- TARGET SCORE
+    --========================================================
+
+    local function Score(player, part)
+
+        if not part then
+            return nil
+        end
+
+        local position,
+            onScreen =
+            Camera:WorldToViewportPoint(
+                part.Position
+            )
+
+        if
+            not onScreen
+            or
+            position.Z <= 0
+        then
+            return nil
+        end
+
+        local screen =
+            Vector2.new(
+                position.X,
+                position.Y
+            )
+
+        local mouse =
+            UserInputService:GetMouseLocation()
+
+        local center =
+            Vector2.new(
+                Camera.ViewportSize.X / 2,
+                Camera.ViewportSize.Y / 2
+            )
+
+        local cursorDistance =
+            (
+                screen -
+                mouse
+            ).Magnitude
+
+        local centerDistance =
+            (
+                screen -
+                center
+            ).Magnitude
+
+        local fov =
+            tonumber(
+                Hub.State.RageFOV
+            )
+            or
+            1000
+
+        local extra =
+            tonumber(
+                Hub.State.RageScanPixels
+            )
+            or
+            0
+
+        --====================================================
+        -- CLOSEST TO CURSOR
+        --====================================================
+
+        if Hub.State.RageTargetMode ==
+            "Closest to Cursor"
+        then
+
+            if cursorDistance >
+                fov + extra
+            then
+                return nil
+            end
+
+            return cursorDistance
+        end
+
+        --====================================================
+        -- OTHER MODES
+        --====================================================
+
+        if centerDistance >
+            fov + extra
+        then
+            return nil
+        end
+
+        if Hub.State.RageTargetMode ==
+            "Lowest Health"
+        then
+
+            local humanoid =
+                player.Character:
+                FindFirstChildOfClass(
+                    "Humanoid"
+                )
+
+            if not humanoid then
+                return nil
+            end
+
+            return humanoid.Health
+        end
+
+        local mine =
+            Root(LocalPlayer)
+
+        local theirs =
+            Root(player)
+
+        if
+            not mine
+            or
+            not theirs
+        then
+            return nil
+        end
+
+        return
+            (
+                mine.Position -
+                theirs.Position
+            ).Magnitude
+    end
+
+    --========================================================
+    -- TARGET ACQUISITION
+    --========================================================
+
+    local function AcquireTarget()
+
+        local bestPlayer = nil
+        local bestPart = nil
+        local bestScore = math.huge
+
+        local selectedMode =
+            Hub.State.RageTargetMode
+
+        -- Priority overrides the normal selection mode.
+        if Hub.State.RagePriority ~= "None" then
+            selectedMode =
+                Hub.State.RagePriority
+        end
+
+        for _, player in ipairs(
+            Players:GetPlayers()
+        ) do
+
+            if
+                Enemy(player)
+                and
+                InDistance(player)
+            then
+
+                local part =
+                    GetAimPart(player)
+
+                if
+                    part
+                    and
+                    Visible(
+                        player,
+                        part
+                    )
+                then
+
+                    local oldMode =
+                        Hub.State.RageTargetMode
+
+                    Hub.State.RageTargetMode =
+                        selectedMode
+
+                    local score =
+                        Score(
+                            player,
+                            part
+                        )
+
+                    Hub.State.RageTargetMode =
+                        oldMode
+
+                    if
+                        score
+                        and
+                        score < bestScore
+                    then
+
+                        bestScore =
+                            score
+
+                        bestPlayer =
+                            player
+
+                        bestPart =
+                            part
+                    end
+                end
+            end
+        end
+
+        return
+            bestPlayer,
+            bestPart
+    end
+
+    --========================================================
+    -- CAMERA SAVE / RESTORE
+    --========================================================
+
+    local function SaveCamera()
+
+        if CameraSaved then
             return
         end
 
-        TriggerHeld = true
+        SavedCameraMode =
+            LocalPlayer.CameraMode
 
-        if mouse1press then
+        SavedMinZoom =
+            LocalPlayer.CameraMinZoomDistance
+
+        SavedMaxZoom =
+            LocalPlayer.CameraMaxZoomDistance
+
+        CameraSaved = true
+    end
+
+    local function RestoreCamera()
+
+        if not CameraSaved then
+            return
+        end
+
+        pcall(function()
+
+            LocalPlayer.CameraMode =
+                SavedCameraMode
+                or
+                Enum.CameraMode.Classic
+
+            LocalPlayer.CameraMinZoomDistance =
+                SavedMinZoom
+                or
+                0.5
+
+            LocalPlayer.CameraMaxZoomDistance =
+                SavedMaxZoom
+                or
+                12.5
+
+        end)
+
+        CameraSaved = false
+    end
+
+    --========================================================
+    -- THIRD PERSON
+    --========================================================
+
+    Connect(
+        RunService.RenderStepped,
+        function()
+
+            if not Hub.State.RageBot then
+                RestoreCamera()
+                return
+            end
+
+            SaveCamera()
+
+            if Hub.State.RageThirdPerson then
+
+                LocalPlayer.CameraMode =
+                    Enum.CameraMode.Classic
+
+                LocalPlayer.CameraMinZoomDistance =
+                    8
+
+                LocalPlayer.CameraMaxZoomDistance =
+                    14
+            end
+
+            if Hub.State.RageShiftLock then
+
+                pcall(function()
+
+                    LocalPlayer.DevEnableMouseLock =
+                        true
+
+                end)
+            end
+        end
+    )
+
+    --========================================================
+    -- AIMBOT
+    --========================================================
+    --
+    -- THIS WAS THE MAIN BUG IN THE OLD VERSION.
+    -- The previous code acquired a target and then
+    -- intentionally did nothing with it.
+    --
+    -- This version continuously points the camera at the
+    -- currently valid target every RenderStepped.
+    --
+    --========================================================
+
+    Connect(
+        RunService.RenderStepped,
+        function()
+
+            if not Hub.State.RageBot then
+                LastTarget = nil
+                return
+            end
+
+            local target,
+                part =
+                AcquireTarget()
+
+            if
+                not target
+                or
+                not part
+            then
+
+                LastTarget = nil
+                return
+            end
+
+            LastTarget = target
+
+            --================================================
+            -- AIM CAMERA DIRECTLY AT TARGET
+            --================================================
+
+            local cameraPosition =
+                Camera.CFrame.Position
+
+            Camera.CFrame =
+                CFrame.lookAt(
+                    cameraPosition,
+                    part.Position
+                )
+
+        end
+    )
+
+    --========================================================
+    -- SPINBOT
+    --========================================================
+
+    Connect(
+        RunService.RenderStepped,
+        function(dt)
+
+            if
+                not Hub.State.RageBot
+                or
+                not Hub.State.RageSpinbot
+            then
+                return
+            end
+
+            local character =
+                Character()
+
+            local humanoid =
+                Humanoid()
+
+            local root =
+                character
+                and
+                character:FindFirstChild(
+                    "HumanoidRootPart"
+                )
+
+            if
+                not humanoid
+                or
+                not root
+            then
+                return
+            end
+
+            if SavedAutoRotate == nil then
+                SavedAutoRotate =
+                    humanoid.AutoRotate
+            end
+
+            humanoid.AutoRotate = false
+
+            local speed =
+                tonumber(
+                    Hub.State.RageSpinSpeed
+                )
+                or
+                900
+
+            root.CFrame =
+                root.CFrame
+                *
+                CFrame.Angles(
+                    0,
+                    math.rad(speed) * dt,
+                    0
+                )
+        end
+    )
+
+    --========================================================
+    -- MOVEMENT
+    --========================================================
+
+    Connect(
+        RunService.Heartbeat,
+        function()
+
+            local humanoid =
+                Humanoid()
+
+            if not humanoid then
+                return
+            end
+
+            if Hub.State.RageBot then
+
+                --================================================
+                -- SPEED
+                --================================================
+
+                if Hub.State.RageSpeedHack then
+
+                    if SavedWalkSpeed == nil then
+                        SavedWalkSpeed =
+                            humanoid.WalkSpeed
+                    end
+
+                    humanoid.WalkSpeed =
+                        tonumber(
+                            Hub.State.RageWalkSpeed
+                        )
+                        or
+                        100
+
+                elseif SavedWalkSpeed ~= nil then
+
+                    humanoid.WalkSpeed =
+                        SavedWalkSpeed
+
+                    SavedWalkSpeed = nil
+                end
+
+                --================================================
+                -- JUMP
+                --================================================
+
+                if Hub.State.RageJumpHack then
+
+                    if humanoid.UseJumpPower then
+
+                        if SavedJumpPower == nil then
+                            SavedJumpPower =
+                                humanoid.JumpPower
+                        end
+
+                        humanoid.JumpPower =
+                            tonumber(
+                                Hub.State.RageJumpPower
+                            )
+                            or
+                            100
+                    end
+
+                elseif SavedJumpPower ~= nil then
+
+                    humanoid.JumpPower =
+                        SavedJumpPower
+
+                    SavedJumpPower = nil
+                end
+
+                --================================================
+                -- BUNNY HOP
+                --================================================
+
+                if
+                    Hub.State.RageBunnyHop
+                    and
+                    humanoid.MoveDirection.Magnitude > 0
+                    and
+                    humanoid.FloorMaterial ~=
+                        Enum.Material.Air
+                then
+
+                    humanoid.Jump = true
+                end
+
+            else
+
+                if SavedWalkSpeed ~= nil then
+
+                    humanoid.WalkSpeed =
+                        SavedWalkSpeed
+
+                    SavedWalkSpeed = nil
+                end
+
+                if SavedJumpPower ~= nil then
+
+                    humanoid.JumpPower =
+                        SavedJumpPower
+
+                    SavedJumpPower = nil
+                end
+
+                if SavedAutoRotate ~= nil then
+
+                    humanoid.AutoRotate =
+                        SavedAutoRotate
+
+                    SavedAutoRotate = nil
+
+                else
+
+                    humanoid.AutoRotate = true
+                end
+            end
+        end
+    )
+
+    --========================================================
+    -- INFINITE JUMP
+    --========================================================
+
+    Connect(
+        UserInputService.JumpRequest,
+        function()
+
+            if
+                not Hub.State.RageBot
+                or
+                not Hub.State.RageInfiniteJump
+            then
+                return
+            end
+
+            local humanoid =
+                Humanoid()
+
+            if humanoid then
+
+                humanoid:ChangeState(
+                    Enum.HumanoidStateType.Jumping
+                )
+
+            end
+        end
+    )
+
+    --========================================================
+    -- LEFT CLICK SHOOTING
+    --========================================================
+    --
+    -- Priority:
+    --
+    -- 1. mouse1press / mouse1release
+    -- 2. Tool:Activate() fallback
+    --
+    -- This means Auto Shoot actually behaves like left click
+    -- when the environment exposes mouse input functions.
+    --
+    --========================================================
+
+    local MouseDown = false
+
+    local function LeftClick()
+
+        if MouseDown then
+            return
+        end
+
+        MouseDown = true
+
+        --====================================================
+        -- ACTUAL LEFT MOUSE INPUT
+        --====================================================
+
+        if type(mouse1press) == "function" then
 
             pcall(function()
                 mouse1press()
@@ -1365,389 +1656,494 @@ do
             return
         end
 
-        pcall(function()
+        --====================================================
+        -- TOOL FALLBACK
+        --====================================================
 
-            local VirtualUser =
-                game:GetService("VirtualUser")
+        local character =
+            Character()
 
-            VirtualUser:Button1Down(
-                Vector2.new(
-                    Camera.ViewportSize.X / 2,
-                    Camera.ViewportSize.Y / 2
-                ),
-                Camera.CFrame
-            )
-
-        end)
-    end
-
-    local function ReleaseLeftClick()
-
-        if not TriggerHeld then
+        if not character then
+            MouseDown = false
             return
         end
 
-        TriggerHeld = false
+        local tool =
+            character:FindFirstChildOfClass(
+                "Tool"
+            )
 
-        if mouse1release then
+        if tool then
+
+            pcall(function()
+                tool:Activate()
+            end)
+        end
+    end
+
+    local function LeftRelease()
+
+        if not MouseDown then
+            return
+        end
+
+        MouseDown = false
+
+        if type(mouse1release) == "function" then
 
             pcall(function()
                 mouse1release()
             end)
 
-            return
         end
-
-        pcall(function()
-
-            local VirtualUser =
-                game:GetService("VirtualUser")
-
-            VirtualUser:Button1Up(
-                Vector2.new(
-                    Camera.ViewportSize.X / 2,
-                    Camera.ViewportSize.Y / 2
-                ),
-                Camera.CFrame
-            )
-
-        end)
     end
 
     --========================================================
-    -- TRIGGERBOT LOOP
-    --========================================================
-
-    Connect(
-        RunService.RenderStepped,
-        function()
-
-            if not Hub.State.RAGE
-                or not Hub.State.Triggerbot then
-
-                ReleaseLeftClick()
-
-                return
-            end
-
-            local target =
-                GetTriggerTarget()
-
-            if target then
-
-                HoldLeftClick()
-
-                -- Default LMB also activates the aimbot.
-                if Hub.State.AimbotKeyType ==
-                    "Mouse"
-                    and
-                    Hub.State.AimbotKey ==
-                        Enum.UserInputType.MouseButton1 then
-
-                    Hub.State.AimbotHolding = true
-                end
-
-            else
-
-                ReleaseLeftClick()
-
-                if Hub.State.AimbotKeyType ==
-                    "Mouse"
-                    and
-                    Hub.State.AimbotKey ==
-                        Enum.UserInputType.MouseButton1 then
-
-                    Hub.State.AimbotHolding = false
-                end
-            end
-        end
-    )
-
-    --========================================================
-    -- KEYBIND LIST
-    --========================================================
-
-    local KeybindListFrame =
-        Instance.new("Frame")
-
-    KeybindListFrame.Name =
-        "FTAL_KeybindList"
-
-    KeybindListFrame.AnchorPoint =
-        Vector2.new(1,0)
-
-    KeybindListFrame.Position =
-        UDim2.new(1,-15,0,15)
-
-    KeybindListFrame.Size =
-        UDim2.fromOffset(190,55)
-
-    KeybindListFrame.BackgroundColor3 =
-        Theme.Background2
-
-    KeybindListFrame.BackgroundTransparency =
-        .35
-
-    KeybindListFrame.BorderSizePixel = 0
-
-    KeybindListFrame.ZIndex = 2000
-
-    KeybindListFrame.Visible =
-        Hub.State.KeybindList == true
-
-    KeybindListFrame.Parent = Gui
-
-    Round(
-        KeybindListFrame,
-        5
-    )
-
-    Stroke(
-        KeybindListFrame,
-        Theme.Border
-    )
-
-    local KeybindTitle =
-        Instance.new("TextLabel")
-
-    KeybindTitle.BackgroundTransparency = 1
-
-    KeybindTitle.Position =
-        UDim2.fromOffset(9,5)
-
-    KeybindTitle.Size =
-        UDim2.new(1,-18,0,15)
-
-    KeybindTitle.Font =
-        Enum.Font.GothamBold
-
-    KeybindTitle.Text =
-        "KEYBINDS"
-
-    KeybindTitle.TextSize = 8
-
-    KeybindTitle.TextColor3 =
-        Theme.Muted
-
-    KeybindTitle.TextXAlignment =
-        Enum.TextXAlignment.Left
-
-    KeybindTitle.ZIndex = 2001
-
-    KeybindTitle.Parent =
-        KeybindListFrame
-
-    local KeybindText =
-        Instance.new("TextLabel")
-
-    KeybindText.BackgroundTransparency = 1
-
-    KeybindText.Position =
-        UDim2.fromOffset(9,20)
-
-    KeybindText.Size =
-        UDim2.new(1,-18,1,-24)
-
-    KeybindText.Font =
-        Enum.Font.Gotham
-
-    KeybindText.TextSize = 9
-
-    KeybindText.TextColor3 =
-        Theme.Text
-
-    KeybindText.TextXAlignment =
-        Enum.TextXAlignment.Left
-
-    KeybindText.TextYAlignment =
-        Enum.TextYAlignment.Top
-
-    KeybindText.ZIndex = 2001
-
-    KeybindText.Parent =
-        KeybindListFrame
-
-    Connect(
-        RunService.RenderStepped,
-        function()
-
-            KeybindListFrame.Visible =
-                Hub.State.KeybindList == true
-
-            if not KeybindListFrame.Visible then
-                return
-            end
-
-            local rows = {}
-
-            -- AIMBOT
-            if Hub.State.AimbotKey then
-
-                local state =
-                    Hub.State.Aimbot
-                    and
-                    Hub.State.AimbotHolding
-
-                table.insert(
-                    rows,
-                    "Aimbot  [" ..
-                    GetKeybindName() ..
-                    "]  " ..
-                    (state and "ON" or "OFF")
-                )
-            end
-
-            -- KILL AURA
-            if Hub.State.KillAuraKey then
-
-                table.insert(
-                    rows,
-                    "Kill Aura  [" ..
-                    Hub.State.KillAuraKey.Name ..
-                    "]  " ..
-                    (
-                        Hub.State.KillAura
-                        and "ON"
-                        or "OFF"
-                    )
-                )
-            end
-
-            if #rows == 0 then
-
-                KeybindText.Text =
-                    "No keybinds"
-
-                KeybindListFrame.Size =
-                    UDim2.fromOffset(
-                        190,
-                        55
-                    )
-
-            else
-
-                KeybindText.Text =
-                    table.concat(
-                        rows,
-                        "\n"
-                    )
-
-                KeybindListFrame.Size =
-                    UDim2.fromOffset(
-                        190,
-                        25 + (#rows * 17)
-                    )
-            end
-        end
-    )
-
-    --========================================================
-    -- SETTINGS TOGGLE SYNC
+    -- AUTO SHOOT
     --========================================================
 
     Connect(
         RunService.Heartbeat,
         function()
 
-            if KeybindListFrame then
+            --================================================
+            -- EVERYTHING OFF
+            --================================================
 
-                KeybindListFrame.Visible =
-                    Hub.State.KeybindList == true
+            if
+                not Hub.State.RageBot
+                or
+                not Hub.State.RageAutoShoot
+            then
+
+                LeftRelease()
+                LastTarget = nil
+
+                return
+            end
+
+            --================================================
+            -- CONTINUOUS TARGET SEARCH
+            --================================================
+
+            local target,
+                part =
+                AcquireTarget()
+
+            --================================================
+            -- NO VALID TARGET
+            --================================================
+
+            if
+                not target
+                or
+                not part
+            then
+
+                LeftRelease()
+                LastTarget = nil
+
+                return
+            end
+
+            LastTarget = target
+
+            --================================================
+            -- FIRE RATE
+            --================================================
+
+            local now =
+                os.clock()
+
+            local rate =
+                math.max(
+                    1,
+                    tonumber(
+                        Hub.State.RageFireRate
+                    )
+                    or
+                    30
+                )
+
+            local interval =
+                1 / rate
+
+            --================================================
+            -- HIT CHANCE
+            --================================================
+
+            local chance =
+                math.clamp(
+                    tonumber(
+                        Hub.State.RageHitChance
+                    )
+                    or
+                    100,
+                    0,
+                    100
+                )
+
+            --================================================
+            -- FIRE
+            --================================================
+
+            if
+                now - LastShot >= interval
+            then
+
+                LastShot = now
+
+                if
+                    math.random(1, 100)
+                    <=
+                    chance
+                then
+
+                    LeftClick()
+
+                    -- Release shortly after the click.
+                    task.delay(
+                        math.min(
+                            interval * 0.45,
+                            0.05
+                        ),
+                        function()
+
+                            if
+                                Hub.State.RageBot
+                                and
+                                Hub.State.RageAutoShoot
+                            then
+
+                                LeftRelease()
+
+                            end
+                        end
+                    )
+                end
+            end
+
+        end
+    )
+
+    --========================================================
+    -- STATUS OVERLAY
+    --========================================================
+
+    local function CreateOverlay()
+
+        if
+            RageOverlay
+            and
+            RageOverlay.Parent
+        then
+            return
+        end
+
+        RageOverlay =
+            Instance.new(
+                "TextLabel"
+            )
+
+        RageOverlay.Name =
+            "RageBotStatus"
+
+        RageOverlay.AnchorPoint =
+            Vector2.new(1, 0)
+
+        RageOverlay.Position =
+            UDim2.new(
+                1,
+                -12,
+                0,
+                75
+            )
+
+        RageOverlay.Size =
+            UDim2.fromOffset(
+                250,
+                28
+            )
+
+        RageOverlay.BackgroundColor3 =
+            Theme.Background2
+
+        RageOverlay.BackgroundTransparency =
+            0.2
+
+        RageOverlay.BorderSizePixel =
+            0
+
+        RageOverlay.Font =
+            Enum.Font.GothamBold
+
+        RageOverlay.TextSize =
+            10
+
+        RageOverlay.TextColor3 =
+            Theme.Text
+
+        RageOverlay.TextXAlignment =
+            Enum.TextXAlignment.Right
+
+        RageOverlay.ZIndex =
+            999
+
+        RageOverlay.Parent =
+            Gui
+
+        Round(
+            RageOverlay,
+            5
+        )
+
+        Stroke(
+            RageOverlay,
+            Theme.Border
+        )
+    end
+
+    local function UpdateOverlay()
+
+        if
+            not Hub.State.RageBot
+            or
+            not Hub.State.RageKeybindList
+        then
+
+            if RageOverlay then
+                RageOverlay.Visible = false
+            end
+
+            return
+        end
+
+        CreateOverlay()
+
+        RageOverlay.Visible = true
+
+        local target,
+            part =
+            AcquireTarget()
+
+        local targetName =
+            target
+            and
+            target.DisplayName
+            or
+            "NO TARGET"
+
+        local targetState =
+            target
+            and
+            "LOCKED"
+            or
+            "NO TARGET"
+
+        RageOverlay.Text =
+            "RAGE  •  "
+            ..
+            targetState
+            ..
+            "  •  "
+            ..
+            targetName
+    end
+
+    Connect(
+        RunService.RenderStepped,
+        UpdateOverlay
+    )
+
+    --========================================================
+    -- RESPAWN
+    --========================================================
+
+    Connect(
+        LocalPlayer.CharacterAdded,
+        function(character)
+
+            SavedWalkSpeed = nil
+            SavedJumpPower = nil
+            SavedAutoRotate = nil
+
+            LastTarget = nil
+            LastShot = 0
+
+            task.wait(0.25)
+
+            if not Hub.State.RageBot then
+                return
+            end
+
+            local humanoid =
+                character:
+                FindFirstChildOfClass(
+                    "Humanoid"
+                )
+
+            if not humanoid then
+                return
+            end
+
+            if Hub.State.RageSpinbot then
+
+                humanoid.AutoRotate =
+                    false
+
             end
         end
     )
 
     --========================================================
-    -- RELEASE CLICK WHEN WINDOW LOSES FOCUS
+    -- FOCUS LOST
     --========================================================
 
     Connect(
         UserInputService.WindowFocusReleased,
         function()
 
-            ReleaseLeftClick()
+            LeftRelease()
 
             Hub.State.AimbotHolding =
                 false
+
+            LastTarget = nil
+
         end
     )
 
     --========================================================
-    -- RAGE RESPAWN CAMERA
+    -- CLEANUP
     --========================================================
 
     Connect(
-        LocalPlayer.CharacterAdded,
+        RunService.Heartbeat,
         function()
 
-            task.wait(.2)
-
-            if Hub.State.RAGE then
-
-                SetRageCamera(true)
-
+            if not Hub.Destroyed then
+                return
             end
+
+            LeftRelease()
+
+            RestoreCamera()
+
+            if RageOverlay then
+
+                pcall(function()
+                    RageOverlay:Destroy()
+                end)
+
+                RageOverlay = nil
+            end
+
         end
     )
 
-    --========================================================
-    -- RAGE UNLOAD CLEANUP
-    --========================================================
-
-    local oldStop =
-        _G.StopFTALSHub
-
-    _G.StopFTALSHub =
-        function()
-
-            ReleaseLeftClick()
-
-            Hub.State.RAGE = false
-            Hub.State.Triggerbot = false
-            Hub.State.AimbotHolding = false
-
-            SetRageCamera(false)
-
-            pcall(function()
-
-                local character =
-                    LocalPlayer.Character
-
-                local humanoid =
-                    character
-                    and
-                    character:FindFirstChildOfClass(
-                        "Humanoid"
-                    )
-
-                if humanoid then
-                    humanoid.AutoRotate = true
-                end
-
-            end)
-
-            if oldStop then
-                oldStop()
-            end
-        end
 end
 
 ]]
 
 --============================================================
--- COMPILE
+-- 7. FINAL VERIFICATION
 --============================================================
 
-local fn,err =
-    loadstring(source)
+local requiredStrings = {
 
-if not fn then
+    'local RageBotPage = CreatePage("RageBot")',
+
+    'CreateTab("RageBot","☠")',
+
+    'Hub.State.RageBot',
+
+    'local function AcquireTarget()',
+
+    'local function LeftClick()',
+
+    'mouse1press',
+
+    'RageBotStatus',
+
+}
+
+for _, needle in ipairs(
+    requiredStrings
+) do
+
+    if not string.find(
+        source,
+        needle,
+        1,
+        true
+    ) then
+
+        error(
+            "[FTAL 334] FINAL VERIFICATION FAILED: "
+            ..
+            needle
+        )
+    end
+end
+
+print(
+    "[FTAL 334] All RageBot patches verified."
+)
+
+print(
+    "[FTAL 334] Final source size:",
+    #source,
+    "bytes"
+)
+
+--============================================================
+-- 8. COMPILE
+--============================================================
+
+local compileOK,
+    fn,
+    err =
+    pcall(
+        loadstring,
+        source
+    )
+
+if
+    not compileOK
+    or
+    type(fn) ~= "function"
+then
 
     error(
-        "[FTAL 334] GitHub updater compile error: "
+        "[FTAL 334] COMPILE FAILED:\n"
         ..
         tostring(err)
     )
 end
 
-return fn()
+print(
+    "[FTAL 334] Compilation successful."
+)
+
+--============================================================
+-- 9. EXECUTE
+--============================================================
+
+local executeOK,
+    result =
+    pcall(fn)
+
+if not executeOK then
+
+    error(
+        "[FTAL 334] EXECUTION FAILED:\n"
+        ..
+        tostring(result)
+    )
+end
+
+print(
+    "[FTAL 334] RageBot updater loaded successfully."
+)
+
+return result
