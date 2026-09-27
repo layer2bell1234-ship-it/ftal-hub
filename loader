@@ -1,0 +1,1398 @@
+--============================================================--
+-- ART LOADER
+-- COMPACT LOCAL VERSION
+--============================================================--
+
+--// SERVICES
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TeleportService = game:GetService("TeleportService")
+
+local LocalPlayer = Players.LocalPlayer
+
+--============================================================--
+-- CONFIG
+--============================================================--
+
+local CONFIG = {
+
+	--==========================================================--
+	-- MAIN WINDOW
+	--==========================================================--
+
+     Title = "5 foot 3 manelet loader",
+
+	--==========================================================--
+	-- TAB NAMES
+	--==========================================================--
+
+	Tabs = {
+		Loader = "LOADER",
+		Teleport = "TELEPORT",
+		Updates = "UPDATE LOG",
+	},
+
+	--==========================================================--
+	-- TELEPORT TAB
+	--==========================================================--
+
+	Teleport = {
+
+		Title = "PLACE TELEPORTER",
+
+		Description = "Select a destination",
+
+		-- Add, remove, rename, or change IDs here.
+		Teleports = {
+
+			{
+				Name = "ABA",
+				PlaceId = 1458767429,
+			},
+
+			{
+				Name = "blox fruit",
+				PlaceId = 2753915549,
+			},
+
+			{
+				Name = "Trading",
+				PlaceId = 1111111111,
+			},
+
+			{
+				Name = "Arena",
+				PlaceId = 2222222222,
+			},
+
+			{
+				Name = "Testing",
+				PlaceId = 3333333333,
+			},
+
+			{
+				Name = "Place 6",
+				PlaceId = 4444444444,
+			},
+
+			{
+				Name = "Place 7",
+				PlaceId = 5555555555,
+			},
+
+			{
+				Name = "Place 8",
+				PlaceId = 6666666666,
+			},
+
+			{
+				Name = "Place 9",
+				PlaceId = 7777777777,
+			},
+
+			{
+				Name = "Place 10",
+				PlaceId = 8888888888,
+			},
+
+			{
+				Name = "Place 11",
+				PlaceId = 9999999999,
+			},
+
+			{
+				Name = "Place 12",
+				PlaceId = 1010101010,
+			},
+
+			{
+				Name = "Place 13",
+				PlaceId = 1212121212,
+			},
+
+			{
+				Name = "Place 14",
+				PlaceId = 1313131313,
+			},
+
+			{
+				Name = "Place 15",
+				PlaceId = 1414141414,
+			},
+
+		},
+	},
+
+	--==========================================================--
+	-- UPDATE LOG
+	--==========================================================--
+
+	Updates = {
+		"Art Loader v1.0",
+		"Compact interface redesign",
+		"Added custom Place Teleporter",
+		"Improved script readability",
+		"Added automatic PlaceId detection",
+	},
+
+}
+
+--============================================================--
+-- GAME SCRIPTS
+--============================================================--
+
+local SCRIPTS = {
+
+	{
+		Name = "Universal",
+
+		PlaceIds = {},
+
+		Run = function()
+			loadstring(game:HttpGet("https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/updater"))()
+		end,
+	},
+
+	{
+		Name = "aba script",
+
+		PlaceIds = {
+			1458767429,
+		},
+
+		Run = function()
+			loadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/9a103aaf258f544965b6affe481b58ae.lua"))() 
+
+		end,
+	},
+
+	{
+		Name = "Best fling gui",
+
+		PlaceIds = {
+			1234567891,
+		},
+
+		Run = function()
+			loadstring(game:HttpGet("https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/loader%20fling"))() 
+		end,
+	},
+
+	{
+		Name = "place holder",
+
+		PlaceIds = {
+			1234567892,
+		},
+
+		Run = function()
+			loadstring(game:HttpGet(""))() 
+		end,
+	},
+
+	{
+		Name = "Game Script 4",
+
+		PlaceIds = {
+			1234567893,
+		},
+
+		Run = function()
+			loadstring(game:HttpGet(""))() 
+		end,
+	},
+
+	{
+		Name = "Game Script 5",
+
+		PlaceIds = {
+			1234567894,
+		},
+
+		Run = function()
+			loadstring(game:HttpGet(""))() 
+		end,
+	},
+
+	{
+		Name = "Game Script 6",
+
+		PlaceIds = {
+			1234567895,
+		},
+
+		Run = function()
+			print("Game Script 6 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 7",
+
+		PlaceIds = {
+			1234567896,
+		},
+
+		Run = function()
+			print("Game Script 7 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 8",
+
+		PlaceIds = {
+			1234567897,
+		},
+
+		Run = function()
+			print("Game Script 8 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 9",
+
+		PlaceIds = {
+			1234567898,
+		},
+
+		Run = function()
+			print("Game Script 9 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 10",
+
+		PlaceIds = {
+			1234567899,
+		},
+
+		Run = function()
+			print("Game Script 10 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 11",
+
+		PlaceIds = {
+			1234567800,
+		},
+
+		Run = function()
+			print("Game Script 11 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 12",
+
+		PlaceIds = {
+			1234567801,
+		},
+
+		Run = function()
+			print("Game Script 12 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 13",
+
+		PlaceIds = {
+			1234567802,
+		},
+
+		Run = function()
+			print("Game Script 13 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 14",
+
+		PlaceIds = {
+			1234567803,
+		},
+
+		Run = function()
+			print("Game Script 14 selected")
+		end,
+	},
+
+	{
+		Name = "Game Script 15",
+
+		PlaceIds = {
+			1234567804,
+		},
+
+		Run = function()
+			print("Game Script 15 selected")
+		end,
+	},
+
+}
+
+--============================================================--
+-- ASCII ART
+--============================================================--
+
+local ASCII_ART = {
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+	"⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
+}
+
+local ART_TEXT = table.concat(ASCII_ART, "\n")
+
+--============================================================--
+-- SCREEN GUI
+--============================================================--
+
+local ScreenGui = Instance.new("ScreenGui")
+
+ScreenGui.Name = "ArtLoader"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+--============================================================--
+-- MAIN WINDOW
+--============================================================--
+
+local Main = Instance.new("Frame")
+
+Main.Name = "Main"
+
+Main.Size = UDim2.fromOffset(430, 520)
+
+Main.Position = UDim2.new(
+	0.5,
+	-215,
+	0.5,
+	-260
+)
+
+Main.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+
+Main.BorderSizePixel = 0
+Main.ClipsDescendants = true
+
+Main.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+
+MainCorner.CornerRadius = UDim.new(0, 9)
+
+MainCorner.Parent = Main
+
+--============================================================--
+-- ART BACKGROUND
+--============================================================--
+
+local ArtBackground = Instance.new("Frame")
+
+ArtBackground.Size = UDim2.fromScale(1, 1)
+
+ArtBackground.BackgroundTransparency = 1
+
+ArtBackground.ZIndex = 1
+
+ArtBackground.Parent = Main
+
+local Art = Instance.new("TextLabel")
+
+Art.Size = UDim2.new(
+	1,
+	-20,
+	1,
+	-20
+)
+
+Art.Position = UDim2.fromOffset(10, 10)
+
+Art.BackgroundTransparency = 1
+
+Art.Text = ART_TEXT
+
+Art.TextColor3 = Color3.fromRGB(90, 90, 90)
+
+Art.TextTransparency = 0.55
+
+Art.Font = Enum.Font.Code
+
+Art.TextSize = 10
+
+Art.TextWrapped = false
+
+Art.TextScaled = false
+
+Art.TextXAlignment = Enum.TextXAlignment.Center
+
+Art.TextYAlignment = Enum.TextYAlignment.Center
+
+Art.ZIndex = 1
+
+Art.Parent = ArtBackground
+
+local ArtShade = Instance.new("Frame")
+
+ArtShade.Size = UDim2.fromScale(1, 1)
+
+ArtShade.BackgroundColor3 = Color3.fromRGB(42, 42, 42)
+
+ArtShade.BackgroundTransparency = 0.12
+
+ArtShade.BorderSizePixel = 0
+
+ArtShade.ZIndex = 2
+
+ArtShade.Parent = Main
+
+--============================================================--
+-- TOP BAR
+--============================================================--
+
+local TopBar = Instance.new("Frame")
+
+TopBar.Size = UDim2.new(1, 0, 0, 42)
+
+TopBar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+
+TopBar.BorderSizePixel = 0
+
+TopBar.ZIndex = 10
+
+TopBar.Parent = Main
+
+local Title = Instance.new("TextLabel")
+
+Title.Size = UDim2.new(1, -55, 1, 0)
+
+Title.Position = UDim2.fromOffset(14, 0)
+
+Title.BackgroundTransparency = 1
+
+Title.Text = CONFIG.Title
+
+Title.TextColor3 = Color3.fromRGB(235, 235, 235)
+
+Title.Font = Enum.Font.GothamBold
+
+Title.TextSize = 15
+
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+Title.ZIndex = 11
+
+Title.Parent = TopBar
+
+local Close = Instance.new("TextButton")
+
+Close.Size = UDim2.fromOffset(38, 38)
+
+Close.Position = UDim2.new(1, -41, 0, 2)
+
+Close.BackgroundTransparency = 1
+
+Close.Text = "×"
+
+Close.TextColor3 = Color3.fromRGB(210, 210, 210)
+
+Close.Font = Enum.Font.GothamBold
+
+Close.TextSize = 23
+
+Close.ZIndex = 11
+
+Close.Parent = TopBar
+
+Close.MouseButton1Click:Connect(function()
+
+	ScreenGui:Destroy()
+
+end)
+
+--============================================================--
+-- DRAGGING
+--============================================================--
+
+local Dragging = false
+local DragStart
+local StartPosition
+
+TopBar.InputBegan:Connect(function(Input)
+
+	if Input.UserInputType == Enum.UserInputType.MouseButton1 then
+
+		Dragging = true
+
+		DragStart = Input.Position
+
+		StartPosition = Main.Position
+
+		Input.Changed:Connect(function()
+
+			if Input.UserInputState == Enum.UserInputState.End then
+
+				Dragging = false
+
+			end
+
+		end)
+
+	end
+
+end)
+
+UserInputService.InputChanged:Connect(function(Input)
+
+	if not Dragging then
+		return
+	end
+
+	if Input.UserInputType == Enum.UserInputType.MouseMovement then
+
+		local Delta = Input.Position - DragStart
+
+		Main.Position = UDim2.new(
+			StartPosition.X.Scale,
+			StartPosition.X.Offset + Delta.X,
+			StartPosition.Y.Scale,
+			StartPosition.Y.Offset + Delta.Y
+		)
+
+	end
+
+end)
+
+--============================================================--
+-- CONTENT
+--============================================================--
+
+local Content = Instance.new("Frame")
+
+Content.Size = UDim2.new(1, -18, 1, -52)
+
+Content.Position = UDim2.fromOffset(9, 48)
+
+Content.BackgroundTransparency = 1
+
+Content.ZIndex = 10
+
+Content.Parent = Main
+
+--============================================================--
+-- TAB BAR
+--============================================================--
+
+local TabBar = Instance.new("Frame")
+
+TabBar.Size = UDim2.new(1, 0, 0, 34)
+
+TabBar.BackgroundTransparency = 1
+
+TabBar.ZIndex = 10
+
+TabBar.Parent = Content
+
+local function CreateTab(Name, X)
+
+	local Button = Instance.new("TextButton")
+
+	Button.Size = UDim2.new(
+		1 / 3,
+		-4,
+		1,
+		0
+	)
+
+	Button.Position = UDim2.new(
+		X,
+		2,
+		0,
+		0
+	)
+
+	Button.BackgroundColor3 = Color3.fromRGB(58, 58, 58)
+
+	Button.BorderSizePixel = 0
+
+	Button.Text = Name
+
+	Button.TextColor3 = Color3.fromRGB(215, 215, 215)
+
+	Button.Font = Enum.Font.GothamBold
+
+	Button.TextSize = 11
+
+	Button.ZIndex = 11
+
+	Button.Parent = TabBar
+
+	local Corner = Instance.new("UICorner")
+
+	Corner.CornerRadius = UDim.new(0, 5)
+
+	Corner.Parent = Button
+
+	return Button
+
+end
+
+local LoaderTab = CreateTab(
+	CONFIG.Tabs.Loader,
+	0
+)
+
+local TeleportTab = CreateTab(
+	CONFIG.Tabs.Teleport,
+	1 / 3
+)
+
+local UpdatesTab = CreateTab(
+	CONFIG.Tabs.Updates,
+	2 / 3
+)
+
+--============================================================--
+-- PAGES
+--============================================================--
+
+local Pages = Instance.new("Frame")
+
+Pages.Size = UDim2.new(1, 0, 1, -42)
+
+Pages.Position = UDim2.fromOffset(0, 42)
+
+Pages.BackgroundTransparency = 1
+
+Pages.ZIndex = 10
+
+Pages.Parent = Content
+
+local LoaderPage = Instance.new("Frame")
+
+LoaderPage.Size = UDim2.fromScale(1, 1)
+
+LoaderPage.BackgroundTransparency = 1
+
+LoaderPage.ZIndex = 10
+
+LoaderPage.Parent = Pages
+
+local TeleportPage = Instance.new("Frame")
+
+TeleportPage.Size = UDim2.fromScale(1, 1)
+
+TeleportPage.BackgroundTransparency = 1
+
+TeleportPage.Visible = false
+
+TeleportPage.ZIndex = 10
+
+TeleportPage.Parent = Pages
+
+local UpdatesPage = Instance.new("Frame")
+
+UpdatesPage.Size = UDim2.fromScale(1, 1)
+
+UpdatesPage.BackgroundTransparency = 1
+
+UpdatesPage.Visible = false
+
+UpdatesPage.ZIndex = 10
+
+UpdatesPage.Parent = Pages
+
+local function ShowPage(Page)
+
+	LoaderPage.Visible = Page == LoaderPage
+
+	TeleportPage.Visible = Page == TeleportPage
+
+	UpdatesPage.Visible = Page == UpdatesPage
+
+end
+
+LoaderTab.MouseButton1Click:Connect(function()
+
+	ShowPage(LoaderPage)
+
+end)
+
+TeleportTab.MouseButton1Click:Connect(function()
+
+	ShowPage(TeleportPage)
+
+end)
+
+UpdatesTab.MouseButton1Click:Connect(function()
+
+	ShowPage(UpdatesPage)
+
+end)
+
+--============================================================--
+-- LOADER PAGE
+--============================================================--
+
+local SearchBox = Instance.new("TextBox")
+
+SearchBox.Size = UDim2.new(1, 0, 0, 34)
+
+SearchBox.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+
+SearchBox.BorderSizePixel = 0
+
+SearchBox.PlaceholderText = "Search scripts..."
+
+SearchBox.PlaceholderColor3 = Color3.fromRGB(140, 140, 140)
+
+SearchBox.Text = ""
+
+SearchBox.TextColor3 = Color3.fromRGB(235, 235, 235)
+
+SearchBox.Font = Enum.Font.Gotham
+
+SearchBox.TextSize = 12
+
+SearchBox.ClearTextOnFocus = false
+
+SearchBox.ZIndex = 11
+
+SearchBox.Parent = LoaderPage
+
+local SearchCorner = Instance.new("UICorner")
+
+SearchCorner.CornerRadius = UDim.new(0, 5)
+
+SearchCorner.Parent = SearchBox
+
+--============================================================--
+-- CURRENT PLACE
+--============================================================--
+
+local PlaceLabel = Instance.new("TextLabel")
+
+PlaceLabel.Size = UDim2.new(1, 0, 0, 26)
+
+PlaceLabel.Position = UDim2.fromOffset(0, 40)
+
+PlaceLabel.BackgroundTransparency = 1
+
+PlaceLabel.Text =
+	"CURRENT PLACE  •  "
+	.. tostring(game.PlaceId)
+
+PlaceLabel.TextColor3 = Color3.fromRGB(155, 155, 155)
+
+PlaceLabel.Font = Enum.Font.Code
+
+PlaceLabel.TextSize = 11
+
+PlaceLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+PlaceLabel.ZIndex = 11
+
+PlaceLabel.Parent = LoaderPage
+
+--============================================================--
+-- SCRIPT LIST
+--============================================================--
+
+local ScriptList = Instance.new("ScrollingFrame")
+
+ScriptList.Size = UDim2.new(1, 0, 1, -112)
+
+ScriptList.Position = UDim2.fromOffset(0, 72)
+
+ScriptList.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+
+ScriptList.BackgroundTransparency = 0.15
+
+ScriptList.BorderSizePixel = 0
+
+ScriptList.ScrollBarThickness = 3
+
+ScriptList.CanvasSize = UDim2.new()
+
+ScriptList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+ScriptList.ZIndex = 11
+
+ScriptList.Parent = LoaderPage
+
+local ScriptCorner = Instance.new("UICorner")
+
+ScriptCorner.CornerRadius = UDim.new(0, 6)
+
+ScriptCorner.Parent = ScriptList
+
+local ScriptLayout = Instance.new("UIListLayout")
+
+ScriptLayout.Padding = UDim.new(0, 4)
+
+ScriptLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+ScriptLayout.Parent = ScriptList
+
+local ScriptPadding = Instance.new("UIPadding")
+
+ScriptPadding.PaddingTop = UDim.new(0, 5)
+
+ScriptPadding.PaddingBottom = UDim.new(0, 5)
+
+ScriptPadding.PaddingLeft = UDim.new(0, 5)
+
+ScriptPadding.PaddingRight = UDim.new(0, 5)
+
+ScriptPadding.Parent = ScriptList
+
+local SelectedScript = nil
+
+local function GameMatches(Script)
+
+	for _, ID in ipairs(Script.PlaceIds) do
+
+		if tonumber(ID) == tonumber(game.PlaceId) then
+
+			return true
+
+		end
+
+	end
+
+	return false
+
+end
+
+local function CreateScriptButton(Script, Index)
+
+	local Button = Instance.new("TextButton")
+
+	Button.Size = UDim2.new(1, -10, 0, 36)
+
+	Button.BackgroundColor3 = Color3.fromRGB(55, 55, 55)
+
+	Button.BorderSizePixel = 0
+
+	Button.Text = Script.Name
+
+	Button.TextColor3 = Color3.fromRGB(225, 225, 225)
+
+	Button.Font = Enum.Font.GothamMedium
+
+	Button.TextSize = 12
+
+	Button.TextXAlignment = Enum.TextXAlignment.Left
+
+	Button.LayoutOrder = Index
+
+	Button.ZIndex = 12
+
+	Button.Parent = ScriptList
+
+	local Padding = Instance.new("UIPadding")
+
+	Padding.PaddingLeft = UDim.new(0, 11)
+
+	Padding.Parent = Button
+
+	local Corner = Instance.new("UICorner")
+
+	Corner.CornerRadius = UDim.new(0, 5)
+
+	Corner.Parent = Button
+
+	Button.MouseButton1Click:Connect(function()
+
+		SelectedScript = Script
+
+		for _, Child in ipairs(ScriptList:GetChildren()) do
+
+			if Child:IsA("TextButton") then
+
+				Child.BackgroundColor3 =
+					Color3.fromRGB(55, 55, 55)
+
+			end
+
+		end
+
+		Button.BackgroundColor3 =
+			Color3.fromRGB(78, 78, 78)
+
+	end)
+
+	return Button
+
+end
+
+for Index, Script in ipairs(SCRIPTS) do
+
+	CreateScriptButton(Script, Index)
+
+end
+
+--============================================================--
+-- AUTO GAME DETECTION
+--============================================================--
+
+for _, Script in ipairs(SCRIPTS) do
+
+	if Script.Name ~= "Universal"
+		and GameMatches(Script) then
+
+		SelectedScript = Script
+
+		break
+
+	end
+
+end
+
+if not SelectedScript then
+
+	for _, Script in ipairs(SCRIPTS) do
+
+		if Script.Name == "Universal" then
+
+			SelectedScript = Script
+
+			break
+
+		end
+
+	end
+
+end
+
+--============================================================--
+-- LOAD BUTTON
+--============================================================--
+
+local LoadButton = Instance.new("TextButton")
+
+LoadButton.Size = UDim2.new(1, 0, 0, 34)
+
+LoadButton.Position = UDim2.new(
+	0,
+	0,
+	1,
+	-34
+)
+
+LoadButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+
+LoadButton.BorderSizePixel = 0
+
+LoadButton.Text = "LOAD SELECTED"
+
+LoadButton.TextColor3 = Color3.fromRGB(235, 235, 235)
+
+LoadButton.Font = Enum.Font.GothamBold
+
+LoadButton.TextSize = 11
+
+LoadButton.ZIndex = 13
+
+LoadButton.Parent = LoaderPage
+
+local LoadCorner = Instance.new("UICorner")
+
+LoadCorner.CornerRadius = UDim.new(0, 5)
+
+LoadCorner.Parent = LoadButton
+
+LoadButton.MouseButton1Click:Connect(function()
+
+	if SelectedScript and SelectedScript.Run then
+
+		SelectedScript.Run()
+
+		ScreenGui:Destroy()
+
+	end
+
+end)
+
+--============================================================--
+-- SEARCH
+--============================================================--
+
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+
+	local Query = string.lower(SearchBox.Text)
+
+	for _, Button in ipairs(ScriptList:GetChildren()) do
+
+		if Button:IsA("TextButton") then
+
+			local Name = string.lower(Button.Name)
+
+			Button.Visible =
+				Query == ""
+				or string.find(
+					Name,
+					Query,
+					1,
+					true
+				) ~= nil
+
+		end
+
+	end
+
+end)
+
+--============================================================--
+-- TELEPORT PAGE
+--============================================================--
+
+local TeleportHeader = Instance.new("TextLabel")
+
+TeleportHeader.Size = UDim2.new(1, 0, 0, 30)
+
+TeleportHeader.BackgroundTransparency = 1
+
+TeleportHeader.Text =
+	CONFIG.Teleport.Title
+
+TeleportHeader.TextColor3 = Color3.fromRGB(235, 235, 235)
+
+TeleportHeader.Font = Enum.Font.GothamBold
+
+TeleportHeader.TextSize = 14
+
+TeleportHeader.TextXAlignment =
+	Enum.TextXAlignment.Left
+
+TeleportHeader.ZIndex = 11
+
+TeleportHeader.Parent = TeleportPage
+
+local TeleportInfo = Instance.new("TextLabel")
+
+TeleportInfo.Size = UDim2.new(1, 0, 0, 24)
+
+TeleportInfo.Position = UDim2.fromOffset(0, 27)
+
+TeleportInfo.BackgroundTransparency = 1
+
+TeleportInfo.Text =
+	CONFIG.Teleport.Description
+
+TeleportInfo.TextColor3 =
+	Color3.fromRGB(145, 145, 145)
+
+TeleportInfo.Font = Enum.Font.Gotham
+
+TeleportInfo.TextSize = 11
+
+TeleportInfo.TextXAlignment =
+	Enum.TextXAlignment.Left
+
+TeleportInfo.ZIndex = 11
+
+TeleportInfo.Parent = TeleportPage
+
+--============================================================--
+-- TELEPORT LIST
+--============================================================--
+
+local TeleportList = Instance.new("ScrollingFrame")
+
+TeleportList.Size = UDim2.new(1, 0, 1, -60)
+
+TeleportList.Position = UDim2.fromOffset(0, 60)
+
+TeleportList.BackgroundColor3 =
+	Color3.fromRGB(40, 40, 40)
+
+TeleportList.BackgroundTransparency = 0.1
+
+TeleportList.BorderSizePixel = 0
+
+TeleportList.ScrollBarThickness = 3
+
+TeleportList.CanvasSize = UDim2.new()
+
+TeleportList.AutomaticCanvasSize =
+	Enum.AutomaticSize.Y
+
+TeleportList.ZIndex = 11
+
+TeleportList.Parent = TeleportPage
+
+local TeleportCorner = Instance.new("UICorner")
+
+TeleportCorner.CornerRadius = UDim.new(0, 6)
+
+TeleportCorner.Parent = TeleportList
+
+local TeleportLayout = Instance.new("UIListLayout")
+
+TeleportLayout.Padding = UDim.new(0, 5)
+
+TeleportLayout.SortOrder =
+	Enum.SortOrder.LayoutOrder
+
+TeleportLayout.Parent = TeleportList
+
+local TeleportPadding = Instance.new("UIPadding")
+
+TeleportPadding.PaddingTop = UDim.new(0, 6)
+
+TeleportPadding.PaddingBottom = UDim.new(0, 6)
+
+TeleportPadding.PaddingLeft = UDim.new(0, 6)
+
+TeleportPadding.PaddingRight = UDim.new(0, 6)
+
+TeleportPadding.Parent = TeleportList
+
+--============================================================--
+-- TELEPORT BUTTON
+--============================================================--
+
+local function CreateTeleportButton(Data, Index)
+
+	local PlaceId = tonumber(Data.PlaceId)
+
+	if not PlaceId or PlaceId <= 0 then
+		return
+	end
+
+	local Button = Instance.new("TextButton")
+
+	Button.Name =
+		"Teleport_" .. tostring(Index)
+
+	Button.Size = UDim2.new(1, -12, 0, 48)
+
+	Button.BackgroundColor3 =
+		Color3.fromRGB(55, 55, 55)
+
+	Button.BorderSizePixel = 0
+
+	Button.Text = ""
+
+	Button.LayoutOrder = Index
+
+	Button.ZIndex = 12
+
+	Button.Parent = TeleportList
+
+	local Corner = Instance.new("UICorner")
+
+	Corner.CornerRadius = UDim.new(0, 5)
+
+	Corner.Parent = Button
+
+	--========================================================--
+	-- NAME
+	--========================================================--
+
+	local NameLabel = Instance.new("TextLabel")
+
+	NameLabel.Size = UDim2.new(1, -20, 0, 22)
+
+	NameLabel.Position = UDim2.fromOffset(10, 3)
+
+	NameLabel.BackgroundTransparency = 1
+
+	NameLabel.Text =
+		tostring(Data.Name)
+
+	NameLabel.TextColor3 =
+		Color3.fromRGB(230, 230, 230)
+
+	NameLabel.Font = Enum.Font.GothamBold
+
+	NameLabel.TextSize = 12
+
+	NameLabel.TextXAlignment =
+		Enum.TextXAlignment.Left
+
+	NameLabel.ZIndex = 13
+
+	NameLabel.Parent = Button
+
+	--========================================================--
+	-- PLACE ID
+	--========================================================--
+
+	local IdLabel = Instance.new("TextLabel")
+
+	IdLabel.Size = UDim2.new(1, -20, 0, 17)
+
+	IdLabel.Position = UDim2.fromOffset(10, 25)
+
+	IdLabel.BackgroundTransparency = 1
+
+	IdLabel.Text =
+		"PlaceId  •  "
+		.. tostring(PlaceId)
+
+	IdLabel.TextColor3 =
+		Color3.fromRGB(145, 145, 145)
+
+	IdLabel.Font = Enum.Font.Code
+
+	IdLabel.TextSize = 10
+
+	IdLabel.TextXAlignment =
+		Enum.TextXAlignment.Left
+
+	IdLabel.ZIndex = 13
+
+	IdLabel.Parent = Button
+
+	--========================================================--
+	-- HOVER
+	--========================================================--
+
+	Button.MouseEnter:Connect(function()
+
+		Button.BackgroundColor3 =
+			Color3.fromRGB(65, 65, 65)
+
+	end)
+
+	Button.MouseLeave:Connect(function()
+
+		Button.BackgroundColor3 =
+			Color3.fromRGB(55, 55, 55)
+
+	end)
+
+	--========================================================--
+	-- TELEPORT
+	--========================================================--
+
+	Button.MouseButton1Click:Connect(function()
+
+		TeleportService:Teleport(
+			PlaceId,
+			LocalPlayer
+		)
+
+	end)
+
+end
+
+--============================================================--
+-- BUILD TELEPORTS FROM CONFIG
+--============================================================--
+
+for Index, Data in ipairs(
+	CONFIG.Teleport.Teleports
+) do
+
+	CreateTeleportButton(
+		Data,
+		Index
+	)
+
+end
+
+--============================================================--
+-- UPDATES PAGE
+--============================================================--
+
+local UpdateList = Instance.new("ScrollingFrame")
+
+UpdateList.Size = UDim2.fromScale(1, 1)
+
+UpdateList.BackgroundColor3 =
+	Color3.fromRGB(40, 40, 40)
+
+UpdateList.BackgroundTransparency = 0.1
+
+UpdateList.BorderSizePixel = 0
+
+UpdateList.ScrollBarThickness = 3
+
+UpdateList.AutomaticCanvasSize =
+	Enum.AutomaticSize.Y
+
+UpdateList.CanvasSize = UDim2.new()
+
+UpdateList.ZIndex = 11
+
+UpdateList.Parent = UpdatesPage
+
+local UpdateCorner = Instance.new("UICorner")
+
+UpdateCorner.CornerRadius = UDim.new(0, 6)
+
+UpdateCorner.Parent = UpdateList
+
+local UpdateLayout = Instance.new("UIListLayout")
+
+UpdateLayout.Padding = UDim.new(0, 5)
+
+UpdateLayout.Parent = UpdateList
+
+local UpdatePadding = Instance.new("UIPadding")
+
+UpdatePadding.PaddingTop = UDim.new(0, 7)
+
+UpdatePadding.PaddingBottom = UDim.new(0, 7)
+
+UpdatePadding.PaddingLeft = UDim.new(0, 7)
+
+UpdatePadding.PaddingRight = UDim.new(0, 7)
+
+UpdatePadding.Parent = UpdateList
+
+for Index, Update in ipairs(CONFIG.Updates) do
+
+	local Label = Instance.new("TextLabel")
+
+	Label.Size = UDim2.new(1, -14, 0, 32)
+
+	Label.BackgroundColor3 =
+		Color3.fromRGB(55, 55, 55)
+
+	Label.BorderSizePixel = 0
+
+	Label.Text = "  •  " .. tostring(Update)
+
+	Label.TextColor3 =
+		Color3.fromRGB(215, 215, 215)
+
+	Label.Font = Enum.Font.Gotham
+
+	Label.TextSize = 11
+
+	Label.TextXAlignment =
+		Enum.TextXAlignment.Left
+
+	Label.LayoutOrder = Index
+
+	Label.ZIndex = 12
+
+	Label.Parent = UpdateList
+
+	local Corner = Instance.new("UICorner")
+
+	Corner.CornerRadius = UDim.new(0, 5)
+
+	Corner.Parent = Label
+
+end
+
+--============================================================--
+-- END
+--============================================================--
