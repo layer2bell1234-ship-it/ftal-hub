@@ -1,0 +1,493 @@
+--============================================================--
+--              POWERSHELL TERMINAL SCRIPT LOADER            --
+--============================================================--
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+local Player = Players.LocalPlayer
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+--============================================================--
+-- CONFIGURATION
+--============================================================--
+
+local CONFIG = {
+    PASSWORD = "FTALisadam",
+
+    REMEMBER_ACCESS = true,
+    AUTH_FILE = "TerminalLoader_Access.key",
+
+    SCRIPTS = {
+        [77649408247578] = function()
+            loadstring(game:HttpGet("https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/dqr%20auto%20farm%20bot"))()
+
+            -- Put your first game script here.
+        end,
+
+        [85776757589518] = function()
+             loadstring(game:HttpGet("https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/dqr%20auto%20farm%20bot"))()
+
+            -- Put your second game script here.
+        end,
+    },
+
+    UNIVERSAL = function()
+         loadstring(game:HttpGet("https://raw.githubusercontent.com/layer2bell1234-ship-it/ftal-hub/refs/heads/main/updater"))()
+        -- Put your universal script here.
+    end,
+
+    TITLE = "WILL IS RATTD BOTTTTTTT",
+    LOADING_STEP_DELAY = 0.0000001,
+}
+
+--============================================================--
+-- GUI SETUP
+--============================================================--
+
+local OldGui = PlayerGui:FindFirstChild("TerminalLoader")
+
+if OldGui then
+    OldGui:Destroy()
+end
+
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "TerminalLoader"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.Parent = PlayerGui
+
+--============================================================--
+-- MAIN TERMINAL
+--============================================================--
+
+local Main = Instance.new("Frame")
+Main.Name = "PowerShellTerminal"
+Main.Size = UDim2.fromOffset(560, 350)
+Main.Position = UDim2.new(0.5, -280, 0.5, -175)
+Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+Main.BorderSizePixel = 0
+Main.Parent = Gui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 6)
+MainCorner.Parent = Main
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(65, 65, 65)
+MainStroke.Thickness = 1
+MainStroke.Parent = Main
+
+--============================================================--
+-- TITLE BAR
+--============================================================--
+
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 34)
+TopBar.BackgroundColor3 = Color3.fromRGB(28, 28, 28)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = Main
+
+local TopCorner = Instance.new("UICorner")
+TopCorner.CornerRadius = UDim.new(0, 6)
+TopCorner.Parent = TopBar
+
+local Title = Instance.new("TextLabel")
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.fromOffset(14, 0)
+Title.Size = UDim2.new(1, -28, 1, 0)
+Title.Font = Enum.Font.Code
+Title.Text = CONFIG.TITLE
+Title.TextColor3 = Color3.fromRGB(235, 235, 235)
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+--============================================================--
+-- TERMINAL OUTPUT
+--============================================================--
+
+local Output = Instance.new("ScrollingFrame")
+Output.Name = "Output"
+Output.Position = UDim2.fromOffset(12, 46)
+Output.Size = UDim2.new(1, -24, 0, 205)
+Output.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+Output.BorderSizePixel = 0
+Output.ScrollBarThickness = 3
+Output.CanvasSize = UDim2.new()
+Output.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Output.Parent = Main
+
+local OutputPadding = Instance.new("UIPadding")
+OutputPadding.PaddingTop = UDim.new(0, 9)
+OutputPadding.PaddingLeft = UDim.new(0, 10)
+OutputPadding.PaddingRight = UDim.new(0, 10)
+OutputPadding.Parent = Output
+
+local OutputLayout = Instance.new("UIListLayout")
+OutputLayout.Padding = UDim.new(0, 2)
+OutputLayout.Parent = Output
+
+local function scrollToBottom()
+    task.defer(function()
+        Output.CanvasPosition = Vector2.new(
+            0,
+            math.max(0, Output.AbsoluteCanvasSize.Y)
+        )
+    end)
+end
+
+local function createLine(Text, Color)
+    local Line = Instance.new("TextLabel")
+
+    Line.BackgroundTransparency = 1
+    Line.Size = UDim2.new(1, -5, 0, 18)
+    Line.AutomaticSize = Enum.AutomaticSize.Y
+    Line.Font = Enum.Font.Code
+    Line.Text = Text
+    Line.TextColor3 = Color or Color3.fromRGB(205, 205, 205)
+    Line.TextSize = 13
+    Line.TextXAlignment = Enum.TextXAlignment.Left
+    Line.TextWrapped = true
+    Line.Parent = Output
+
+    scrollToBottom()
+
+    return Line
+end
+
+local function log(Message, Color)
+    return createLine(
+        "PS C:\\Terminal> " .. tostring(Message),
+        Color
+    )
+end
+
+local function typeLog(Message, Color, Speed)
+    Speed = Speed or 0.018
+
+    local Line = createLine(
+        "PS C:\\Terminal> ",
+        Color or Color3.fromRGB(205, 205, 205)
+    )
+
+    for Index = 1, #Message do
+        Line.Text = "PS C:\\Terminal> " .. string.sub(Message, 1, Index) .. "█"
+        scrollToBottom()
+        task.wait(Speed)
+    end
+
+    Line.Text = "PS C:\\Terminal> " .. Message
+    scrollToBottom()
+
+    return Line
+end
+
+local function animatedLog(Message, Duration)
+    local Line = createLine(
+        "PS C:\\Terminal> " .. Message .. " ",
+        Color3.fromRGB(205, 205, 205)
+    )
+
+    local Frames = {"", ".", "..", "..."}
+    local StartTime = os.clock()
+    local FrameIndex = 1
+
+    while os.clock() - StartTime < Duration do
+        Line.Text = "PS C:\\Terminal> " .. Message .. Frames[FrameIndex]
+        FrameIndex = FrameIndex % #Frames + 1
+        scrollToBottom()
+        task.wait(0.16)
+    end
+
+    Line.Text = "PS C:\\Terminal> " .. Message .. " DONE"
+    Line.TextColor3 = Color3.fromRGB(110, 220, 140)
+    scrollToBottom()
+end
+
+--============================================================--
+-- PASSWORD INPUT
+--============================================================--
+
+local PasswordBox = Instance.new("TextBox")
+PasswordBox.Name = "Password"
+PasswordBox.Position = UDim2.fromOffset(12, 268)
+PasswordBox.Size = UDim2.new(1, -124, 0, 36)
+PasswordBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+PasswordBox.BorderSizePixel = 0
+PasswordBox.ClearTextOnFocus = false
+PasswordBox.Font = Enum.Font.Code
+PasswordBox.PlaceholderText = "Enter access key..."
+PasswordBox.PlaceholderColor3 = Color3.fromRGB(110, 110, 110)
+PasswordBox.Text = ""
+PasswordBox.TextColor3 = Color3.fromRGB(235, 235, 235)
+PasswordBox.TextSize = 13
+PasswordBox.TextXAlignment = Enum.TextXAlignment.Left
+PasswordBox.Parent = Main
+
+local PasswordCorner = Instance.new("UICorner")
+PasswordCorner.CornerRadius = UDim.new(0, 4)
+PasswordCorner.Parent = PasswordBox
+
+local PasswordPadding = Instance.new("UIPadding")
+PasswordPadding.PaddingLeft = UDim.new(0, 10)
+PasswordPadding.Parent = PasswordBox
+
+local Connect = Instance.new("TextButton")
+Connect.Name = "Connect"
+Connect.Position = UDim2.new(1, -100, 0, 268)
+Connect.Size = UDim2.fromOffset(88, 36)
+Connect.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+Connect.BorderSizePixel = 0
+Connect.Font = Enum.Font.Code
+Connect.Text = "ENTER"
+Connect.TextColor3 = Color3.fromRGB(235, 235, 235)
+Connect.TextSize = 13
+Connect.Parent = Main
+
+local ConnectCorner = Instance.new("UICorner")
+ConnectCorner.CornerRadius = UDim.new(0, 4)
+ConnectCorner.Parent = Connect
+
+--============================================================--
+-- STATUS
+--============================================================--
+
+local Status = Instance.new("TextLabel")
+Status.BackgroundTransparency = 1
+Status.Position = UDim2.fromOffset(12, 315)
+Status.Size = UDim2.new(1, -24, 0, 24)
+Status.Font = Enum.Font.Code
+Status.Text = "STATUS: LOCKED"
+Status.TextColor3 = Color3.fromRGB(150, 150, 150)
+Status.TextSize = 12
+Status.TextXAlignment = Enum.TextXAlignment.Left
+Status.Parent = Main
+
+--============================================================--
+-- SAVED ACCESS
+--============================================================--
+
+local Authenticated = false
+local Loading = false
+
+local function canUseFileStorage()
+    return type(isfile) == "function"
+        and type(readfile) == "function"
+        and type(writefile) == "function"
+end
+
+local function hasSavedAccess()
+    if not CONFIG.REMEMBER_ACCESS or not canUseFileStorage() then
+        return false
+    end
+
+    local Success, SavedPassword = pcall(function()
+        return readfile(CONFIG.AUTH_FILE)
+    end)
+
+    return Success and SavedPassword == CONFIG.PASSWORD
+end
+
+local function saveAccess()
+    if not CONFIG.REMEMBER_ACCESS or not canUseFileStorage() then
+        return
+    end
+
+    pcall(function()
+        writefile(CONFIG.AUTH_FILE, CONFIG.PASSWORD)
+    end)
+end
+
+--============================================================--
+-- SCRIPT LOADING
+--============================================================--
+
+local function runLoadingSequence(SelectedScript, ScriptType, PlaceId)
+    Loading = true
+    Connect.Active = false
+    PasswordBox.Active = false
+    Status.Text = "STATUS: LOADING"
+
+    typeLog("Starting terminal session.", Color3.fromRGB(190, 220, 255))
+    animatedLog("Reading client environment", CONFIG.LOADING_STEP_DELAY)
+    animatedLog("Detecting current PlaceId", CONFIG.LOADING_STEP_DELAY)
+
+    log("PlaceId: " .. tostring(PlaceId), Color3.fromRGB(130, 190, 255))
+    task.wait(CONFIG.LOADING_STEP_DELAY)
+
+    if ScriptType == "GAME" then
+        typeLog("Game-specific module located.", Color3.fromRGB(110, 220, 140))
+    else
+        typeLog("No matching module found.", Color3.fromRGB(230, 190, 100))
+        typeLog("Universal fallback module selected.", Color3.fromRGB(110, 220, 140))
+    end
+
+    animatedLog("Preparing execution environment", CONFIG.LOADING_STEP_DELAY)
+    animatedLog("Verifying module integrity", CONFIG.LOADING_STEP_DELAY)
+    animatedLog("Allocating runtime resources", CONFIG.LOADING_STEP_DELAY)
+    animatedLog("Starting selected module", CONFIG.LOADING_STEP_DELAY)
+
+    Status.Text = "STATUS: EXECUTING"
+    typeLog("Executing script...", Color3.fromRGB(220, 220, 220))
+
+    local Success, ErrorMessage = pcall(function()
+        SelectedScript()
+    end)
+
+    if Success then
+        typeLog("Script loaded successfully.", Color3.fromRGB(110, 220, 140))
+        Status.Text = "STATUS: ONLINE"
+
+        task.wait(1)
+
+        if Gui and Gui.Parent then
+            Gui:Destroy()
+        end
+    else
+        typeLog("Script error: " .. tostring(ErrorMessage), Color3.fromRGB(240, 100, 100))
+        Status.Text = "STATUS: ERROR"
+        Loading = false
+    end
+end
+
+local function detectPlace()
+    local PlaceId = game.PlaceId
+    local SelectedScript = CONFIG.SCRIPTS[PlaceId]
+    local ScriptType = "GAME"
+
+    if not SelectedScript then
+        SelectedScript = CONFIG.UNIVERSAL
+        ScriptType = "UNIVERSAL"
+    end
+
+    if not SelectedScript then
+        typeLog("No script configured for this PlaceId.", Color3.fromRGB(240, 100, 100))
+        Status.Text = "STATUS: NO SCRIPT"
+        Loading = false
+        return
+    end
+
+    task.spawn(function()
+        runLoadingSequence(SelectedScript, ScriptType, PlaceId)
+    end)
+end
+
+--============================================================--
+-- AUTHENTICATION
+--============================================================--
+
+local function authenticate(AutoLogin)
+    if Authenticated or Loading then
+        return
+    end
+
+    local EnteredPassword
+
+    if AutoLogin then
+        EnteredPassword = CONFIG.PASSWORD
+        typeLog("Saved access detected. Auto-authenticating.", Color3.fromRGB(110, 220, 140))
+    else
+        EnteredPassword = PasswordBox.Text
+
+        if EnteredPassword == "" then
+            typeLog("Access key required.", Color3.fromRGB(230, 190, 100))
+            return
+        end
+
+        Status.Text = "STATUS: VERIFYING"
+        animatedLog("Verifying access key", 1)
+    end
+
+    if EnteredPassword == CONFIG.PASSWORD then
+        Authenticated = true
+        saveAccess()
+
+        PasswordBox.Visible = false
+        Connect.Visible = false
+
+        typeLog("Access key accepted.", Color3.fromRGB(110, 220, 140))
+        Status.Text = "STATUS: AUTHENTICATED"
+
+        task.wait(0.5)
+        detectPlace()
+    else
+        typeLog("Access key rejected.", Color3.fromRGB(240, 100, 100))
+        Status.Text = "STATUS: INVALID KEY"
+        PasswordBox.Text = ""
+
+        task.wait(1)
+        Status.Text = "STATUS: LOCKED"
+    end
+end
+
+Connect.MouseButton1Click:Connect(function()
+    authenticate(false)
+end)
+
+PasswordBox.FocusLost:Connect(function(EnterPressed)
+    if EnterPressed then
+        authenticate(false)
+    end
+end)
+
+--============================================================--
+-- DRAGGING
+--============================================================--
+
+local Dragging = false
+local DragStart
+local StartPosition
+
+TopBar.InputBegan:Connect(function(Input)
+    if Input.UserInputType == Enum.UserInputType.MouseButton1
+        or Input.UserInputType == Enum.UserInputType.Touch then
+
+        Dragging = true
+        DragStart = Input.Position
+        StartPosition = Main.Position
+
+        Input.Changed:Connect(function()
+            if Input.UserInputState == Enum.UserInputState.End then
+                Dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(Input)
+    if not Dragging then
+        return
+    end
+
+    if Input.UserInputType ~= Enum.UserInputType.MouseMovement
+        and Input.UserInputType ~= Enum.UserInputType.Touch then
+        return
+    end
+
+    local Delta = Input.Position - DragStart
+
+    Main.Position = UDim2.new(
+        StartPosition.X.Scale,
+        StartPosition.X.Offset + Delta.X,
+        StartPosition.Y.Scale,
+        StartPosition.Y.Offset + Delta.Y
+    )
+end)
+
+--============================================================--
+-- STARTUP
+--============================================================--
+
+task.spawn(function()
+    typeLog("MR robot rat", Color3.fromRGB(190, 220, 255))
+    task.wait(0.25)
+    typeLog("Authentication required.")
+    task.wait(0.25)
+
+    if hasSavedAccess() then
+        authenticate(true)
+    else
+        typeLog("Enter access key to continue.")
+    end
+end)
