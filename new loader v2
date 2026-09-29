@@ -4,6 +4,7 @@
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
@@ -13,7 +14,17 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 --============================================================--
 
 local CONFIG = {
-    PASSWORD = "FTALisadam",
+    --========================================================--
+    -- AUTHENTICATION API  <<< CHANGE THIS ONE LINE AFTER HOSTING >>>
+    --
+    -- http://127.0.0.1:8787/...  = LOCAL TESTING ONLY.
+    --   127.0.0.1 is the customer's OWN computer, so real customers
+    --   can never reach your PC through it.
+    --
+    -- Real customers need your PUBLIC HTTPS address, for example:
+    --   "https://keys.yourdomain.com/api/validate"
+    --========================================================--
+    AUTH_URL = "https://gathering-dab-hunk.ngrok-free.dev/api/validate",
 
     REMEMBER_ACCESS = true,
     AUTH_FILE = "TerminalLoader_Access.key",
@@ -270,6 +281,7 @@ Status.Parent = Main
 
 local Authenticated = false
 local Loading = false
+local Verifying = false
 
 local function canUseFileStorage()
     return type(isfile) == "function"
@@ -277,26 +289,144 @@ local function canUseFileStorage()
         and type(writefile) == "function"
 end
 
-local function hasSavedAccess()
+local function trim(Text)
+    return (tostring(Text):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+-- Returns the locally saved customer key, or nil if there isn't one.
+local function readSavedKey()
     if not CONFIG.REMEMBER_ACCESS or not canUseFileStorage() then
-        return false
+        return nil
     end
 
-    local Success, SavedPassword = pcall(function()
+    local Success, SavedKey = pcall(function()
+        if not isfile(CONFIG.AUTH_FILE) then
+            return nil
+        end
+
         return readfile(CONFIG.AUTH_FILE)
     end)
 
-    return Success and SavedPassword == CONFIG.PASSWORD
+    if Success and type(SavedKey) == "string" then
+        SavedKey = trim(SavedKey)
+
+        if SavedKey ~= "" then
+            return SavedKey
+        end
+    end
+
+    return nil
 end
 
-local function saveAccess()
+local function saveKey(Key)
     if not CONFIG.REMEMBER_ACCESS or not canUseFileStorage() then
         return
     end
 
     pcall(function()
-        writefile(CONFIG.AUTH_FILE, CONFIG.PASSWORD)
+        writefile(CONFIG.AUTH_FILE, Key)
     end)
+end
+
+-- Removes a saved key that the server rejected.
+local function clearSavedKey()
+    if not canUseFileStorage() then
+        return
+    end
+
+    pcall(function()
+        if type(delfile) == "function" and isfile(CONFIG.AUTH_FILE) then
+            delfile(CONFIG.AUTH_FILE)
+        else
+            writefile(CONFIG.AUTH_FILE, "")
+        end
+    end)
+end
+
+--============================================================--
+-- SERVER VALIDATION
+--============================================================--
+
+local function getRequestFunction()
+    if type(request) == "function" then
+        return request
+    end
+
+    if type(http_request) == "function" then
+        return http_request
+    end
+
+    if type(syn) == "table" and type(syn.request) == "function" then
+        return syn.request
+    end
+
+    if type(http) == "table" and type(http.request) == "function" then
+        return http.request
+    end
+
+    if type(fluxus) == "table" and type(fluxus.request) == "function" then
+        return fluxus.request
+    end
+
+    return nil
+end
+
+-- Returns one of:
+--   "valid",    message   -> server authorized this key for this PlaceId
+--   "rejected", reason    -> server said no (bad / revoked / expired / wrong place)
+--   "error",    message   -> could not get a real answer (network, bad response, rate limit)
+-- Anything other than an explicit  valid == true  is treated as NOT authorized.
+local function validateKey(Key)
+    local RequestFunction = getRequestFunction()
+
+    if not RequestFunction then
+        return "error", "This executor does not support HTTP requests."
+    end
+
+    local RequestOK, Response = pcall(function()
+        return RequestFunction({
+            Url = CONFIG.AUTH_URL,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                -- Lets requests through ngrok's free-plan warning page.
+                -- Harmless on any other host.
+                ["ngrok-skip-browser-warning"] = "true",
+            },
+            Body = HttpService:JSONEncode({
+                key = Key,
+                place_id = tostring(game.PlaceId),
+            }),
+        })
+    end)
+
+    if not RequestOK or type(Response) ~= "table" then
+        return "error", "Could not reach authentication server."
+    end
+
+    local DecodeOK, Result = pcall(function()
+        return HttpService:JSONDecode(Response.Body)
+    end)
+
+    if not DecodeOK or type(Result) ~= "table" then
+        return "error", "Invalid response from authentication server."
+    end
+
+    if Result.valid == true then
+        return "valid", tostring(Result.message or "authorized")
+    end
+
+    local Reason = tostring(Result.error or "rejected")
+
+    if Response.StatusCode == 429 then
+        return "error", Reason
+    end
+
+    if Result.valid == false then
+        return "rejected", Reason
+    end
+
+    return "error", "Unexpected response from authentication server."
 end
 
 --============================================================--
@@ -377,31 +507,39 @@ end
 -- AUTHENTICATION
 --============================================================--
 
-local function authenticate(AutoLogin)
-    if Authenticated or Loading then
+local function authenticate(AutoLogin, SavedKey)
+    if Authenticated or Loading or Verifying then
         return
     end
 
-    local EnteredPassword
+    local EnteredKey
 
     if AutoLogin then
-        EnteredPassword = CONFIG.PASSWORD
+        EnteredKey = SavedKey
         typeLog("Saved access detected. Auto-authenticating.", Color3.fromRGB(110, 220, 140))
     else
-        EnteredPassword = PasswordBox.Text
+        EnteredKey = trim(PasswordBox.Text)
 
-        if EnteredPassword == "" then
+        if EnteredKey == "" then
             typeLog("Access key required.", Color3.fromRGB(230, 190, 100))
             return
         end
+    end
 
-        Status.Text = "STATUS: VERIFYING"
+    Verifying = true
+    Status.Text = "STATUS: VERIFYING"
+
+    if not AutoLogin then
         animatedLog("Verifying access key", 1)
     end
 
-    if EnteredPassword == CONFIG.PASSWORD then
+    local Result, Message = validateKey(EnteredKey)
+
+    Verifying = false
+
+    if Result == "valid" then
         Authenticated = true
-        saveAccess()
+        saveKey(EnteredKey)
 
         PasswordBox.Visible = false
         Connect.Visible = false
@@ -411,10 +549,34 @@ local function authenticate(AutoLogin)
 
         task.wait(0.5)
         detectPlace()
-    else
-        typeLog("Access key rejected.", Color3.fromRGB(240, 100, 100))
+
+    elseif Result == "rejected" then
+        -- The server explicitly refused this key: never run the script,
+        -- and forget the saved key if that is where it came from.
+        if AutoLogin then
+            clearSavedKey()
+        end
+
+        typeLog("Access key rejected: " .. tostring(Message), Color3.fromRGB(240, 100, 100))
         Status.Text = "STATUS: INVALID KEY"
         PasswordBox.Text = ""
+
+        task.wait(1)
+        Status.Text = "STATUS: LOCKED"
+
+        if AutoLogin then
+            typeLog("Enter access key to continue.")
+        end
+
+    else
+        -- Could not get a real answer. Do NOT run anything, and do NOT
+        -- delete the saved key (the server may just be unreachable).
+        typeLog(tostring(Message), Color3.fromRGB(230, 190, 100))
+        Status.Text = "STATUS: SERVER ERROR"
+
+        if AutoLogin then
+            typeLog("Saved key kept. Re-run the loader to retry, or enter a key.")
+        end
 
         task.wait(1)
         Status.Text = "STATUS: LOCKED"
@@ -485,8 +647,17 @@ task.spawn(function()
     typeLog("Authentication required.")
     task.wait(0.25)
 
-    if hasSavedAccess() then
-        authenticate(true)
+    -- Developer reminder: only shows if AUTH_URL was never switched to a public address.
+    if string.find(CONFIG.AUTH_URL, "127.0.0.1", 1, true)
+        or string.find(CONFIG.AUTH_URL, "localhost", 1, true)
+        or string.find(CONFIG.AUTH_URL, "YOUR-DOMAIN", 1, true) then
+        typeLog("WARNING: AUTH_URL is a local/placeholder address.", Color3.fromRGB(230, 190, 100))
+    end
+
+    local SavedKey = readSavedKey()
+
+    if SavedKey then
+        authenticate(true, SavedKey)
     else
         typeLog("Enter access key to continue.")
     end
