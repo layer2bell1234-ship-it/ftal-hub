@@ -10,6 +10,16 @@ local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local CoreGui
+local UiParent = PlayerGui
+
+pcall(function()
+    CoreGui = game:GetService("CoreGui")
+end)
+
+-- PlayerGui is the safest default for Roblox ScreenGui rendering. CoreGui
+-- remains available only as a guarded fallback if parenting fails.
 
 pcall(function()
     if _G.StopFTALMovementVisuals then
@@ -24,6 +34,20 @@ end)
 pcall(function()
     local virtualInput = game:GetService("VirtualInputManager")
     virtualInput:SendKeyEvent(false,Enum.KeyCode.W,false,game)
+end)
+
+-- Remove only stale copies of this script's interface. This prevents a
+-- hidden older panel from covering or confusing the newly loaded GUI.
+pcall(function()
+    for _,container in ipairs({PlayerGui,CoreGui,UiParent}) do
+        if container then
+            for _,child in ipairs(container:GetChildren()) do
+                if child.Name == "FTAL334_MovementVisuals" then
+                    child:Destroy()
+                end
+            end
+        end
+    end
 end)
 
 local Hub = {
@@ -110,8 +134,12 @@ Hub.State = {
     AutoPickup = false,
     AutoReplay = false,
     FarmStopDistance = 4,
+    WinterAOIRange = 40,
+    WinterNPCAOIRange = 18,
+    WinterAttackAOIRange = 32,
+    WinterRedDuration = 1.2,
     FarmRepathInterval = 0.35,
-    FarmScanRadius = 500,
+    FarmScanRadius = 1000,
     FarmDungeon = "Desert Temple (Legacy)",
     AutoDungeon = false,
     AutoStartDungeon = false,
@@ -152,6 +180,10 @@ local SettingKeyByTitle = {
     ["Fling Strength"] = "FlingStrength",
     ["Fling Duration"] = "FlingDuration",
     ["NPC Stop Distance"] = "FarmStopDistance",
+    ["Winter AOI Range"] = "WinterAOIRange",
+    ["NPC Run Distance"] = "WinterNPCAOIRange",
+    ["NPC Attack AOI"] = "WinterAttackAOIRange",
+    ["Red Dodge Duration"] = "WinterRedDuration",
     ["NPC Detection Range"] = "FarmScanRadius",
     ["Path Recompute"] = "FarmRepathInterval",
     ["ESP Max Distance"] = "ESPMaxDistance",
@@ -192,7 +224,7 @@ local function LoadSettings()
     end
     if data._configVersion == nil then
         Hub.State.FTALSSpeed = 19.82
-        Hub.State.FarmScanRadius = 500
+        Hub.State.FarmScanRadius = 1000
         Hub.State.FarmRepathInterval = 0.35
     end
 end
@@ -289,7 +321,14 @@ Gui.Name = "FTAL334_MovementVisuals"
 Gui.ResetOnSpawn = false
 Gui.IgnoreGuiInset = true -- fixes viewport/ESP Y offset
 Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-Gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+Gui.DisplayOrder = 999999
+Gui.Enabled = true
+pcall(function()
+    Gui.Parent = UiParent
+end)
+if not Gui.Parent then
+    Gui.Parent = PlayerGui
+end
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
@@ -298,6 +337,7 @@ Main.Size = UDim2.fromOffset(600,560)
 Main.Position = UDim2.new(.5,0,.5,0)
 Main.BackgroundColor3 = Theme.Background
 Main.BorderSizePixel = 0
+Main.Visible = true
 Main.Parent = Gui
 Round(Main,8)
 local MainStroke = Stroke(Main,Theme.Border)
@@ -313,7 +353,7 @@ Logo.BackgroundTransparency = 1
 Logo.Position = UDim2.fromOffset(18,5)
 Logo.Size = UDim2.fromOffset(250,29)
 Logo.Font = Enum.Font.GothamBlack
-Logo.Text = "PEPTIDE DQR"
+Logo.Text = "Peptide"
 Logo.TextSize = 22
 Logo.TextColor3 = Theme.Text
 Logo.TextXAlignment = Enum.TextXAlignment.Left
@@ -707,6 +747,10 @@ ShowPage("Movement")
 -- AUTO FARM (experience-owned tags/remotes)
 --============================================================
 
+-- Keep farm state in its own lexical scope. Luau limits simultaneously
+-- active locals to 200; UI/movement/ESP locals must not accumulate with it.
+-- Registered callbacks retain their farm state after this block finishes.
+do
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PathfindingService = game:GetService("PathfindingService")
@@ -735,6 +779,283 @@ local FARM_CONFIG = {
     AbilityCooldown = 0.35,
     RetreatDistance = 15,
     CombatHoldDistance = 18,
+    WinterScanRadius = 1000,
+    WinterTelegraphRadius = 70,
+    WinterHoldExitBuffer = 10,
+    WinterRouteLookahead = 22,
+}
+
+FARM_CONFIG.WinterRoutes = {
+    [1] = {
+        Vector3.new(75.205,47.856,140.610), Vector3.new(72.218,48.454,138.001),
+        Vector3.new(69.338,48.797,135.118), Vector3.new(66.460,48.992,132.284),
+        Vector3.new(63.440,48.352,129.667), Vector3.new(60.409,47.995,126.948),
+        Vector3.new(57.557,47.966,124.099), Vector3.new(54.796,48.145,121.166),
+        Vector3.new(51.885,48.501,118.273), Vector3.new(49.072,48.857,115.401),
+        Vector3.new(46.218,49.176,112.561), Vector3.new(43.439,49.151,109.649),
+        Vector3.new(40.641,48.980,106.762), Vector3.new(37.781,49.012,103.803),
+        Vector3.new(34.989,48.987,100.883), Vector3.new(32.167,49.126,98.007),
+        Vector3.new(29.401,49.289,95.075), Vector3.new(26.579,49.329,92.217),
+        Vector3.new(23.850,48.973,89.300), Vector3.new(21.045,48.634,86.420),
+        Vector3.new(18.353,48.177,83.478), Vector3.new(15.612,47.943,80.524),
+        Vector3.new(12.986,47.990,77.492), Vector3.new(10.375,48.412,74.447),
+        Vector3.new(7.924,48.788,71.268), Vector3.new(5.507,48.821,68.040),
+        Vector3.new(3.320,48.704,64.648), Vector3.new(1.316,48.759,61.150),
+        Vector3.new(-0.434,48.892,57.431), Vector3.new(-1.899,49.025,53.673),
+        Vector3.new(-3.112,48.995,49.743), Vector3.new(-3.841,49.020,45.784),
+        Vector3.new(-3.882,49.037,41.760), Vector3.new(-3.007,48.989,37.822),
+        Vector3.new(-1.419,49.052,34.135), Vector3.new(0.289,49.027,30.481),
+        Vector3.new(1.908,48.977,26.801), Vector3.new(3.607,48.952,23.172),
+        Vector3.new(5.270,49.026,19.405), Vector3.new(6.984,49.584,15.747),
+        Vector3.new(8.611,49.763,12.055), Vector3.new(10.294,49.125,8.473),
+        Vector3.new(11.941,48.720,4.713), Vector3.new(13.621,48.546,1.052),
+        Vector3.new(15.200,48.539,-2.662), Vector3.new(16.870,48.659,-6.334),
+        Vector3.new(18.454,48.815,-10.039), Vector3.new(20.138,48.933,-13.698),
+        Vector3.new(21.810,48.946,-17.460), Vector3.new(23.566,48.932,-21.178),
+        Vector3.new(25.270,48.949,-24.920), Vector3.new(26.961,49.279,-28.580),
+        Vector3.new(28.446,49.538,-32.406), Vector3.new(29.493,49.795,-36.296),
+        Vector3.new(30.437,49.980,-40.300), Vector3.new(30.981,50.074,-44.287),
+        Vector3.new(31.452,49.950,-48.278), Vector3.new(31.820,49.080,-52.193),
+        Vector3.new(32.122,48.887,-56.261), Vector3.new(32.113,48.991,-60.270),
+        Vector3.new(32.296,49.323,-64.298), Vector3.new(32.619,48.919,-68.291),
+        Vector3.new(33.428,48.911,-72.212), Vector3.new(34.562,49.072,-76.107),
+        Vector3.new(36.286,48.846,-79.839), Vector3.new(38.221,48.820,-83.370),
+        Vector3.new(40.293,48.685,-86.829), Vector3.new(42.268,48.768,-90.346),
+        Vector3.new(44.228,48.996,-93.870), Vector3.new(46.087,49.356,-97.433),
+        Vector3.new(47.994,49.873,-100.946), Vector3.new(49.843,49.043,-104.443),
+    },
+    [2] = {
+        Vector3.new(49.497,49.204,-103.704), Vector3.new(49.992,49.141,-107.716),
+        Vector3.new(50.561,48.996,-111.687), Vector3.new(51.043,49.018,-115.688),
+        Vector3.new(51.603,49.444,-119.799), Vector3.new(51.937,49.221,-123.798),
+        Vector3.new(51.867,49.110,-127.810), Vector3.new(50.742,49.375,-131.711),
+        Vector3.new(47.829,49.274,-134.567), Vector3.new(44.381,49.202,-136.811),
+        Vector3.new(41.051,49.158,-139.085), Vector3.new(37.766,49.030,-141.416),
+        Vector3.new(34.664,49.139,-143.986), Vector3.new(31.696,49.179,-146.714),
+        Vector3.new(28.967,49.324,-149.787), Vector3.new(26.879,49.442,-153.236),
+        Vector3.new(25.614,49.395,-157.113), Vector3.new(25.706,49.326,-161.127),
+        Vector3.new(26.642,49.230,-165.020), Vector3.new(28.449,49.223,-168.591),
+        Vector3.new(30.552,49.185,-172.026), Vector3.new(32.876,48.949,-175.301),
+        Vector3.new(35.165,48.893,-178.625), Vector3.new(37.624,48.855,-181.822),
+        Vector3.new(40.137,48.903,-184.975), Vector3.new(43.093,48.904,-187.846),
+        Vector3.new(45.861,48.956,-190.769), Vector3.new(47.601,48.965,-194.375),
+        Vector3.new(48.334,48.982,-198.417), Vector3.new(48.397,49.014,-202.448),
+        Vector3.new(48.274,49.012,-206.480), Vector3.new(48.078,48.998,-210.489),
+        Vector3.new(47.968,49.042,-214.505), Vector3.new(47.776,49.097,-218.524),
+        Vector3.new(47.691,49.119,-222.614), Vector3.new(47.515,49.085,-226.645),
+        Vector3.new(47.434,48.918,-230.742), Vector3.new(47.257,48.893,-234.772),
+        Vector3.new(47.182,48.921,-238.800), Vector3.new(46.981,49.156,-242.820),
+        Vector3.new(46.873,49.348,-246.851), Vector3.new(46.684,49.127,-250.864),
+        Vector3.new(46.557,48.960,-254.970), Vector3.new(46.387,48.981,-259.081),
+        Vector3.new(46.224,49.012,-263.115), Vector3.new(46.094,48.984,-267.152),
+        Vector3.new(45.897,49.000,-271.248), Vector3.new(45.786,49.049,-275.272),
+        Vector3.new(45.585,49.007,-279.286), Vector3.new(45.477,48.959,-283.287),
+        Vector3.new(45.276,48.961,-287.313), Vector3.new(45.172,48.889,-291.330),
+        Vector3.new(44.970,48.894,-295.362), Vector3.new(44.869,49.080,-299.382),
+        Vector3.new(44.669,49.450,-303.401), Vector3.new(44.561,49.892,-307.413),
+        Vector3.new(44.375,50.950,-311.339), Vector3.new(44.262,52.344,-315.091),
+        Vector3.new(44.107,53.246,-319.031),
+    },
+    [3] = {
+        Vector3.new(43.701,54.053,-322.840), Vector3.new(43.736,52.805,-326.725),
+        Vector3.new(43.842,51.296,-330.431), Vector3.new(43.844,49.851,-334.225),
+        Vector3.new(43.927,49.002,-338.163), Vector3.new(43.776,48.538,-342.163),
+        Vector3.new(43.588,48.533,-346.195), Vector3.new(43.221,48.544,-350.209),
+        Vector3.new(42.956,48.567,-354.236), Vector3.new(42.810,48.600,-358.268),
+        Vector3.new(42.763,48.590,-362.299), Vector3.new(42.737,48.634,-366.328),
+        Vector3.new(42.743,48.689,-370.365), Vector3.new(42.699,48.655,-374.488),
+        Vector3.new(40.673,48.679,-377.944), Vector3.new(37.861,48.649,-380.832),
+        Vector3.new(35.238,48.663,-383.880), Vector3.new(33.314,48.714,-387.426),
+        Vector3.new(32.090,48.657,-391.235), Vector3.new(31.520,48.668,-395.210),
+        Vector3.new(31.253,48.664,-399.232), Vector3.new(31.134,48.605,-403.244),
+        Vector3.new(31.050,49.209,-407.279), Vector3.new(31.097,49.667,-411.284),
+        Vector3.new(31.046,49.520,-415.310), Vector3.new(31.096,49.384,-419.343),
+        Vector3.new(31.045,49.429,-423.376), Vector3.new(31.094,49.620,-427.399),
+        Vector3.new(31.045,48.783,-431.318), Vector3.new(31.087,48.555,-435.345),
+        Vector3.new(31.049,48.612,-439.380), Vector3.new(31.079,48.618,-443.413),
+        Vector3.new(31.060,48.639,-447.442), Vector3.new(31.061,48.662,-451.480),
+        Vector3.new(31.069,48.645,-455.603), Vector3.new(31.040,48.670,-459.632),
+        Vector3.new(31.103,48.658,-463.672), Vector3.new(31.563,48.655,-467.709),
+        Vector3.new(33.270,48.716,-471.371), Vector3.new(35.037,48.672,-474.978),
+        Vector3.new(36.640,48.675,-478.744), Vector3.new(37.672,48.665,-482.645),
+        Vector3.new(38.496,48.610,-486.566), Vector3.new(38.965,49.529,-490.475),
+        Vector3.new(39.200,50.301,-494.408), Vector3.new(39.272,51.651,-498.260),
+    },
+    [4] = {
+        Vector3.new(38.766,52.866,-501.637), Vector3.new(38.903,52.695,-505.632),
+        Vector3.new(39.448,52.598,-509.681), Vector3.new(40.114,52.697,-513.724),
+        Vector3.new(40.469,52.392,-517.775), Vector3.new(40.779,52.330,-521.848),
+        Vector3.new(41.180,52.734,-525.886), Vector3.new(41.480,52.296,-529.854),
+        Vector3.new(41.878,52.655,-533.826), Vector3.new(42.179,52.507,-537.822),
+        Vector3.new(42.584,52.875,-541.827), Vector3.new(42.887,52.867,-545.844),
+        Vector3.new(43.286,52.793,-549.851), Vector3.new(43.587,52.709,-553.853),
+        Vector3.new(43.889,52.527,-557.868), Vector3.new(44.120,52.764,-561.889),
+        Vector3.new(44.378,53.036,-565.905), Vector3.new(44.640,53.159,-569.932),
+        Vector3.new(44.837,53.304,-573.940), Vector3.new(45.056,53.355,-577.949),
+        Vector3.new(45.180,52.982,-581.936), Vector3.new(45.402,52.665,-585.991),
+        Vector3.new(45.537,52.925,-590.153), Vector3.new(45.809,52.848,-594.146),
+        Vector3.new(46.203,52.414,-598.121), Vector3.new(46.898,52.602,-602.142),
+        Vector3.new(47.753,52.603,-606.069), Vector3.new(49.569,53.157,-609.609),
+        Vector3.new(51.355,53.505,-613.209), Vector3.new(53.028,53.464,-616.917),
+        Vector3.new(54.345,52.872,-620.677), Vector3.new(54.746,52.884,-624.738),
+        Vector3.new(53.774,53.088,-628.633), Vector3.new(51.848,53.029,-632.167),
+        Vector3.new(49.590,52.689,-635.480), Vector3.new(47.029,52.713,-638.710),
+        Vector3.new(44.542,52.833,-641.873), Vector3.new(42.331,52.715,-645.262),
+        Vector3.new(40.470,52.669,-648.816), Vector3.new(38.991,53.672,-652.444),
+        Vector3.new(38.288,53.997,-656.444), Vector3.new(38.479,52.736,-660.307),
+        Vector3.new(39.420,52.759,-664.282), Vector3.new(40.633,52.856,-668.128),
+        Vector3.new(41.984,53.983,-671.751), Vector3.new(43.383,55.030,-675.406),
+        Vector3.new(44.886,54.103,-679.075), Vector3.new(46.067,53.946,-682.915),
+        Vector3.new(47.261,53.968,-686.828), Vector3.new(48.624,54.778,-690.503),
+    },
+    [5] = {
+        Vector3.new(49.005,55.610,-693.949), Vector3.new(49.741,55.657,-697.884),
+        Vector3.new(50.534,55.982,-701.802), Vector3.new(51.248,56.342,-705.748),
+        Vector3.new(52.066,56.368,-709.672), Vector3.new(52.791,55.977,-713.603),
+        Vector3.new(53.594,55.228,-717.555), Vector3.new(54.280,54.921,-721.500),
+        Vector3.new(54.936,54.367,-725.442), Vector3.new(54.780,54.260,-729.442),
+        Vector3.new(54.034,55.150,-733.338), Vector3.new(52.317,56.816,-736.630),
+        Vector3.new(49.893,56.841,-739.848), Vector3.new(47.001,56.700,-742.639),
+        Vector3.new(44.045,57.029,-745.496), Vector3.new(41.180,56.990,-748.334),
+        Vector3.new(38.689,57.011,-751.479), Vector3.new(36.359,57.032,-754.775),
+        Vector3.new(33.987,57.000,-758.112), Vector3.new(32.835,57.051,-761.959),
+        Vector3.new(32.903,56.985,-766.029), Vector3.new(34.082,57.002,-769.864),
+        Vector3.new(35.820,57.007,-773.590), Vector3.new(38.029,56.951,-776.944),
+        Vector3.new(40.244,56.962,-780.312), Vector3.new(42.538,56.889,-783.605),
+        Vector3.new(44.735,56.906,-786.986), Vector3.new(46.827,56.868,-790.431),
+        Vector3.new(48.539,56.885,-794.076), Vector3.new(50.012,56.867,-797.917),
+        Vector3.new(49.976,56.875,-801.994), Vector3.new(48.337,56.902,-805.669),
+        Vector3.new(45.980,56.918,-809.037), Vector3.new(43.445,56.934,-812.177),
+        Vector3.new(41.233,56.965,-815.536), Vector3.new(39.939,56.990,-819.325),
+        Vector3.new(39.997,56.987,-823.397), Vector3.new(41.411,57.014,-827.237),
+        Vector3.new(43.688,56.980,-830.566), Vector3.new(46.373,57.086,-833.552),
+        Vector3.new(49.376,57.213,-836.242), Vector3.new(52.245,57.296,-839.045),
+        Vector3.new(54.589,57.449,-842.387), Vector3.new(56.173,57.557,-846.087),
+        Vector3.new(56.792,57.597,-850.094), Vector3.new(56.505,57.614,-854.203),
+        Vector3.new(55.696,57.472,-858.128), Vector3.new(54.105,57.379,-861.913),
+        Vector3.new(52.071,57.170,-865.374), Vector3.new(49.555,57.053,-868.511),
+        Vector3.new(46.464,56.910,-871.088), Vector3.new(43.204,56.889,-873.592),
+        Vector3.new(41.078,56.870,-876.988), Vector3.new(39.996,56.891,-880.848),
+        Vector3.new(40.097,56.926,-884.851), Vector3.new(41.139,56.929,-888.826),
+        Vector3.new(41.326,56.950,-892.867), Vector3.new(39.057,56.960,-896.348),
+        Vector3.new(35.435,56.972,-898.236), Vector3.new(31.842,56.977,-900.162),
+        Vector3.new(29.372,57.000,-903.516), Vector3.new(27.865,56.974,-907.252),
+        Vector3.new(27.120,57.013,-911.191), Vector3.new(27.520,57.014,-915.200),
+        Vector3.new(28.883,56.989,-918.971), Vector3.new(30.490,57.045,-922.667),
+        Vector3.new(32.197,57.007,-926.303), Vector3.new(33.982,56.978,-929.889),
+        Vector3.new(35.614,56.995,-933.579), Vector3.new(37.208,56.933,-937.258),
+        Vector3.new(38.684,56.948,-941.017), Vector3.new(40.209,56.881,-944.738),
+        Vector3.new(41.584,56.893,-948.533), Vector3.new(42.788,56.858,-952.377),
+        Vector3.new(43.162,56.878,-956.382), Vector3.new(43.289,56.882,-960.414),
+    },
+    [6] = {
+        Vector3.new(45.690,56.998,-962.840), Vector3.new(45.622,57.012,-966.878),
+        Vector3.new(45.643,57.031,-970.894), Vector3.new(45.619,56.968,-974.917),
+        Vector3.new(45.687,56.806,-978.922), Vector3.new(45.664,56.668,-982.956),
+        Vector3.new(45.735,56.482,-986.972), Vector3.new(45.711,56.426,-991.004),
+        Vector3.new(45.788,56.344,-995.029), Vector3.new(46.031,56.380,-999.047),
+        Vector3.new(47.096,56.416,-1002.932), Vector3.new(48.891,56.494,-1006.538),
+        Vector3.new(51.070,56.624,-1009.927), Vector3.new(53.341,56.643,-1013.253),
+        Vector3.new(55.164,56.131,-1016.789), Vector3.new(56.201,54.586,-1020.365),
+        Vector3.new(56.667,53.149,-1024.143), Vector3.new(56.650,53.020,-1028.161),
+        Vector3.new(55.864,52.805,-1032.097), Vector3.new(54.697,52.973,-1035.927),
+        Vector3.new(52.767,53.009,-1039.463), Vector3.new(50.626,52.851,-1042.845),
+        Vector3.new(48.111,52.646,-1045.981), Vector3.new(45.359,52.803,-1048.884),
+        Vector3.new(42.140,52.863,-1051.312), Vector3.new(38.929,52.678,-1053.734),
+        Vector3.new(35.923,52.545,-1056.407), Vector3.new(33.637,52.749,-1059.712),
+        Vector3.new(32.508,52.928,-1063.616), Vector3.new(33.339,52.659,-1067.596),
+        Vector3.new(35.612,52.930,-1070.887), Vector3.new(38.386,52.804,-1073.799),
+        Vector3.new(40.931,52.674,-1076.911), Vector3.new(43.364,52.932,-1080.111),
+        Vector3.new(45.697,52.858,-1083.388), Vector3.new(47.571,52.948,-1086.943),
+        Vector3.new(48.913,53.002,-1090.788), Vector3.new(49.312,52.930,-1094.797),
+        Vector3.new(49.239,52.930,-1098.880), Vector3.new(48.810,52.625,-1102.862),
+        Vector3.new(48.381,52.627,-1106.916), Vector3.new(47.924,52.857,-1110.908),
+        Vector3.new(47.571,52.852,-1114.925), Vector3.new(47.131,52.787,-1118.931),
+        Vector3.new(46.866,52.588,-1122.946), Vector3.new(46.525,52.822,-1126.953),
+        Vector3.new(46.253,53.546,-1130.956), Vector3.new(45.959,55.284,-1134.674),
+        Vector3.new(45.640,56.481,-1138.544), Vector3.new(45.379,57.042,-1142.542),
+        Vector3.new(45.022,56.995,-1146.623), Vector3.new(44.755,57.031,-1150.716),
+        Vector3.new(44.403,57.004,-1154.725), Vector3.new(44.144,56.948,-1158.728),
+        Vector3.new(43.789,57.583,-1162.780),
+    },
+    [7] = {
+        Vector3.new(44.276,58.783,-1166.554), Vector3.new(43.112,57.732,-1170.410),
+        Vector3.new(41.682,56.687,-1174.036), Vector3.new(40.252,54.870,-1177.334),
+        Vector3.new(38.709,54.318,-1181.042), Vector3.new(36.893,54.348,-1184.734),
+        Vector3.new(35.117,54.302,-1188.356), Vector3.new(33.224,54.322,-1191.917),
+        Vector3.new(31.553,54.296,-1195.592), Vector3.new(30.245,54.316,-1199.401),
+        Vector3.new(29.540,54.337,-1203.374), Vector3.new(29.153,54.363,-1207.386),
+        Vector3.new(29.732,54.382,-1211.362), Vector3.new(31.197,54.410,-1215.106),
+        Vector3.new(33.158,54.426,-1218.628), Vector3.new(35.435,54.428,-1221.954),
+        Vector3.new(37.606,54.462,-1225.350), Vector3.new(39.832,54.432,-1228.725),
+        Vector3.new(41.225,54.439,-1232.515), Vector3.new(41.202,54.450,-1236.620),
+        Vector3.new(41.026,54.439,-1240.629), Vector3.new(41.367,54.487,-1244.646),
+        Vector3.new(41.688,54.442,-1248.650), Vector3.new(42.264,54.419,-1252.614),
+        Vector3.new(43.620,54.431,-1256.390), Vector3.new(45.899,54.372,-1259.695),
+        Vector3.new(48.206,54.390,-1262.999), Vector3.new(50.218,54.323,-1266.478),
+        Vector3.new(51.596,54.335,-1270.270), Vector3.new(52.527,54.299,-1274.178),
+        Vector3.new(52.204,54.322,-1278.186), Vector3.new(51.229,54.305,-1282.096),
+        Vector3.new(49.778,54.319,-1285.861), Vector3.new(48.314,54.354,-1289.620),
+        Vector3.new(47.198,54.374,-1293.485), Vector3.new(46.179,54.380,-1297.472),
+        Vector3.new(44.796,54.407,-1301.259), Vector3.new(43.313,54.447,-1305.007),
+        Vector3.new(41.638,54.431,-1308.677), Vector3.new(40.304,54.453,-1312.473),
+        Vector3.new(39.670,54.426,-1316.463), Vector3.new(39.503,54.436,-1320.473),
+        Vector3.new(40.047,54.493,-1324.481), Vector3.new(40.881,54.438,-1328.399),
+        Vector3.new(41.528,54.468,-1332.363), Vector3.new(41.972,54.446,-1336.458),
+        Vector3.new(42.492,54.408,-1340.430), Vector3.new(42.926,54.423,-1344.443),
+        Vector3.new(43.479,54.391,-1348.674), Vector3.new(43.911,54.407,-1352.684),
+        Vector3.new(44.436,54.338,-1356.669), Vector3.new(44.828,55.893,-1360.354),
+        Vector3.new(45.320,57.632,-1364.024),
+    },
+    [8] = {
+        Vector3.new(43.416,58.783,-1366.897), Vector3.new(43.400,57.808,-1370.835),
+        Vector3.new(43.453,56.825,-1374.722), Vector3.new(43.415,55.623,-1378.664),
+        Vector3.new(43.403,55.580,-1382.674), Vector3.new(42.773,55.574,-1386.661),
+        Vector3.new(42.095,55.521,-1390.630), Vector3.new(41.149,55.538,-1394.545),
+        Vector3.new(41.010,55.515,-1398.595), Vector3.new(40.637,55.531,-1402.614),
+        Vector3.new(40.469,55.517,-1406.730), Vector3.new(40.351,55.559,-1410.758),
+        Vector3.new(40.416,55.261,-1414.786), Vector3.new(40.409,55.129,-1418.819),
+        Vector3.new(40.458,55.160,-1422.847), Vector3.new(40.551,55.154,-1426.885),
+        Vector3.new(40.678,55.173,-1430.917), Vector3.new(38.916,55.139,-1434.531),
+        Vector3.new(34.895,55.157,-1434.194), Vector3.new(31.048,55.146,-1435.302),
+        Vector3.new(27.841,55.156,-1437.698), Vector3.new(24.815,55.210,-1440.362),
+        Vector3.new(22.379,55.155,-1443.595), Vector3.new(22.825,55.153,-1447.638),
+        Vector3.new(23.354,55.147,-1451.634), Vector3.new(23.962,55.073,-1455.599),
+        Vector3.new(24.470,55.077,-1459.602), Vector3.new(25.076,55.029,-1463.589),
+        Vector3.new(25.584,55.041,-1467.593), Vector3.new(26.168,55.040,-1471.561),
+        Vector3.new(24.763,55.052,-1475.450), Vector3.new(22.847,55.039,-1479.003),
+        Vector3.new(21.309,55.083,-1482.742), Vector3.new(20.131,55.102,-1486.574),
+        Vector3.new(19.213,55.133,-1490.507), Vector3.new(18.678,55.151,-1494.484),
+        Vector3.new(18.848,55.150,-1498.512), Vector3.new(20.990,55.155,-1501.908),
+        Vector3.new(23.921,55.136,-1504.670), Vector3.new(23.863,55.121,-1508.682),
+        Vector3.new(22.784,55.139,-1512.591), Vector3.new(25.993,55.091,-1515.003),
+        Vector3.new(29.952,55.061,-1515.824), Vector3.new(33.813,55.099,-1517.006),
+        Vector3.new(37.603,55.037,-1515.387), Vector3.new(41.580,55.067,-1516.163),
+        Vector3.new(45.445,55.034,-1517.361), Vector3.new(49.206,55.059,-1515.897),
+        Vector3.new(52.605,55.023,-1513.679), Vector3.new(55.950,55.039,-1511.433),
+        Vector3.new(58.999,55.050,-1508.752), Vector3.new(61.978,55.070,-1506.054),
+        Vector3.new(64.307,55.093,-1502.775), Vector3.new(65.627,55.118,-1498.987),
+        Vector3.new(67.536,55.110,-1495.426), Vector3.new(69.454,55.132,-1491.824),
+        Vector3.new(70.310,55.085,-1487.850), Vector3.new(69.994,55.137,-1483.786),
+        Vector3.new(68.708,55.103,-1479.918), Vector3.new(66.202,55.138,-1476.701),
+        Vector3.new(62.840,55.152,-1474.399), Vector3.new(59.000,55.122,-1473.196),
+        Vector3.new(55.006,55.160,-1472.789), Vector3.new(50.983,55.157,-1472.737),
+        Vector3.new(47.223,55.158,-1474.434), Vector3.new(46.455,55.210,-1470.502),
+        Vector3.new(47.094,55.150,-1466.439), Vector3.new(49.340,55.216,-1463.055),
+        Vector3.new(51.834,55.159,-1459.923), Vector3.new(55.813,55.189,-1459.467),
+        Vector3.new(59.846,55.160,-1459.586), Vector3.new(63.729,55.200,-1460.550),
+        Vector3.new(67.468,55.143,-1462.145), Vector3.new(68.816,55.182,-1465.916),
+        Vector3.new(69.887,55.170,-1469.844), Vector3.new(71.043,55.119,-1473.683),
+        Vector3.new(73.970,55.157,-1476.525),
+    },
+}
+
+local WinterRouteState = {
+    Room = 1,
+    Index = 1,
+    Character = nil,
+    LockedGroup = {},
+    Recovering = false,
 }
 
 local FarmWorkerRunning = false
@@ -762,6 +1083,9 @@ local FarmStatusLabel
 local FarmVisualFolder
 local FarmTargetHighlight
 local FarmRouteParts = {}
+local FarmAOICircle
+local FarmNPCAOICircle
+local FarmNPCRunCircle
 local FarmCombatTarget
 local FarmCombatGroup = {}
 local FarmCombatRangeActive = false
@@ -788,7 +1112,193 @@ local FarmRetreatWaypoints
 local FarmRetreatWaypointIndex
 local FarmLastRootPosition
 local FarmStuckSince = 0
+local FarmBeamScanAt = 0
+local FarmBeamThreatUntil = 0
+local WinterNoclipConnection
+local WinterNoclipOriginal = {}
 
+local function SetWinterNoclip(enabled)
+    if enabled then
+        if WinterNoclipConnection then return end
+        WinterNoclipConnection = RunService.Stepped:Connect(function()
+            local character = LocalPlayer.Character
+            if not character then return end
+            for _,part in ipairs(character:GetDescendants()) do
+                if part:IsA("BasePart") then
+                    if WinterNoclipOriginal[part] == nil then
+                        WinterNoclipOriginal[part] = part.CanCollide
+                    end
+                    part.CanCollide = false
+                end
+            end
+        end)
+    elseif WinterNoclipConnection then
+        WinterNoclipConnection:Disconnect()
+        WinterNoclipConnection = nil
+        for part,canCollide in pairs(WinterNoclipOriginal) do
+            if part and part.Parent then part.CanCollide = canCollide end
+        end
+        table.clear(WinterNoclipOriginal)
+    end
+end
+
+local function WinterBeamVisibleAt(root)
+    local now = os.clock()
+    if now < FarmBeamThreatUntil then return true end
+    if now-FarmBeamScanAt < 0.04 then return false end
+    FarmBeamScanAt = now
+    local found = false
+    pcall(function()
+        for _,object in ipairs(workspace:GetDescendants()) do
+            if string.lower(object.Name or "") == "laserbeam" then
+                if object:IsA("Beam") and object.Enabled then
+                    found = true
+                    break
+                elseif object:IsA("BasePart") and object.Transparency < 0.92 then
+                    found = true
+                    break
+                elseif object:IsA("ParticleEmitter") and object.Enabled then
+                    found = true
+                    break
+                end
+            end
+            if object:IsA("Beam") and object.Enabled then
+                local keypoints = object.Color.Keypoints
+                local color = keypoints[1] and keypoints[1].Value
+                if color and color.B > 0.42 and color.B > color.R*1.15
+                    and color.B > color.G*0.90 then
+                    local a0,a1 = object.Attachment0,object.Attachment1
+                    if a0 then
+                        local origin = a0.WorldPosition
+                        local direction,length
+                        if a1 then
+                            local delta = a1.WorldPosition-origin
+                            length = delta.Magnitude
+                            if length > 0 then direction = delta.Unit end
+                        else
+                            direction = a0.WorldCFrame.LookVector
+                            length = 100
+                        end
+                        if direction and length then
+                            local offset = root.Position-origin
+                            local along = offset:Dot(direction)
+                            local closest = origin+direction*math.clamp(along,0,length)
+                            if along >= -8 and along <= length+8
+                                and (root.Position-closest).Magnitude <= 10 then
+                                found = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if found then
+        FarmBeamThreatUntil = now+0.30
+        return true
+    end
+    return false
+end
+
+local function GetWinterLaserThreat(root)
+    local now = os.clock()
+    if now-(FARM_CONFIG.LastLaserThreatScanAt or 0) < 0.015 then
+        return FARM_CONFIG.LastLaserThreat
+    end
+    FARM_CONFIG.LastLaserThreatScanAt = now
+    local result
+    pcall(function()
+        -- Legacy Winter Outpost creates Workspace.laserBeam as a Model for
+        -- only ~0.21 seconds. Its hitBox is the real 50x1.3x1.3 attack line.
+        local laserModel = workspace:FindFirstChild("laserBeam")
+        if laserModel and laserModel:IsA("Model") then
+            local hitBox = laserModel:FindFirstChild("hitBox",true)
+            if hitBox and hitBox:IsA("BasePart") and hitBox.Transparency < 0.92 then
+                local size = hitBox.Size
+                local length = math.max(size.X,size.Y,size.Z)
+                local direction
+                if size.X >= size.Y and size.X >= size.Z then
+                    direction = hitBox.CFrame.RightVector
+                elseif size.Y >= size.Z then
+                    direction = hitBox.CFrame.UpVector
+                else
+                    direction = hitBox.CFrame.LookVector
+                end
+                local origin = hitBox.Position-direction*(length*0.5)
+                local offset = root.Position-origin
+                local along = offset:Dot(direction)
+                local closest = origin+direction*math.clamp(along,0,length)
+                local width = math.max(1.3,math.min(size.X,size.Y,size.Z))
+                if along >= -8 and along <= length+8
+                    and (root.Position-closest).Magnitude <= width*0.5+12 then
+                    result = {
+                        origin=origin,
+                        direction=direction,
+                        length=length,
+                        width=width,
+                        instance=laserModel,
+                    }
+                    return
+                end
+            end
+        end
+
+        for _,object in ipairs(workspace:GetDescendants()) do
+            local active = false
+            if string.lower(object.Name or "") == "laserbeam" then
+                active = (not object:IsA("Beam") or object.Enabled)
+                    and (not object:IsA("ParticleEmitter") or object.Enabled)
+                    and (not object:IsA("BasePart") or object.Transparency < 0.92)
+            elseif object:IsA("Beam") and object.Enabled then
+                local keypoints = object.Color.Keypoints
+                local color = keypoints[1] and keypoints[1].Value
+                active = color and color.B > 0.42 and color.B > color.R*1.15
+                    and color.B > color.G*0.90
+            end
+            if active then
+                local origin,direction,length
+                if object:IsA("Beam") then
+                    local a0,a1 = object.Attachment0,object.Attachment1
+                    if a0 then
+                        origin = a0.WorldPosition
+                        if a1 then
+                            local delta = a1.WorldPosition-origin
+                            length = delta.Magnitude
+                            if length > 0 then direction = delta.Unit end
+                        else
+                            direction = a0.WorldCFrame.LookVector
+                            length = 100
+                        end
+                    end
+                elseif object:IsA("BasePart") then
+                    local size = object.Size
+                    length = math.max(size.X,size.Y,size.Z)
+                    if size.X >= size.Y and size.X >= size.Z then
+                        direction = object.CFrame.RightVector
+                    elseif size.Y >= size.Z then
+                        direction = object.CFrame.UpVector
+                    else
+                        direction = object.CFrame.LookVector
+                    end
+                    origin = object.Position-direction*(length*0.5)
+                end
+                if origin and direction and length and length >= 5 then
+                    local offset = root.Position-origin
+                    local along = offset:Dot(direction)
+                    local closest = origin+direction*math.clamp(along,0,length)
+                    if along >= -16 and along <= length+16
+                        and (root.Position-closest).Magnitude <= 20 then
+                        result = {origin=origin,direction=direction,length=length,instance=object}
+                        break
+                    end
+                end
+            end
+        end
+    end)
+    FARM_CONFIG.LastLaserThreat = result
+    return result
+end
 local function SetFarmStatus(message)
     if FarmStatusLabel and FarmStatusLabel.Parent then FarmStatusLabel.Text = message end
 end
@@ -1204,6 +1714,19 @@ local function ClearFarmVisuals()
         if part and part.Parent then part:Destroy() end
     end
     table.clear(FarmRouteParts)
+    if FarmAOICircle then
+        FarmAOICircle:Destroy()
+        FarmAOICircle = nil
+    end
+    if FarmNPCAOICircle then
+        FarmNPCAOICircle:Destroy()
+        FarmNPCAOICircle = nil
+    end
+    if FarmNPCRunCircle then
+        FarmNPCRunCircle:Destroy()
+        FarmNPCRunCircle = nil
+    end
+    FARM_CONFIG.AOIRoot = nil
     FarmVisualPath = nil
     FarmVisualTarget = nil
     FarmVisualWaypoint = 0
@@ -1224,6 +1747,105 @@ local function GetFarmVisualFolder()
     FarmTargetHighlight.Parent = FarmVisualFolder
     return FarmVisualFolder
 end
+
+local function SetFarmAOI(root,state)
+    if not root or not root.Parent then return end
+    FARM_CONFIG.AOIRoot = root
+    FARM_CONFIG.AOIState = state
+    if state ~= "HOLD" then FARM_CONFIG.WinterYellowMoveDirection = nil end
+    if not FarmAOICircle or not FarmAOICircle.Parent then
+        FarmAOICircle = Instance.new("Part")
+        FarmAOICircle.Name = "AIStateCircle"
+        FarmAOICircle.Shape = Enum.PartType.Cylinder
+        FarmAOICircle.Anchored = true
+        FarmAOICircle.CanCollide = false
+        FarmAOICircle.CanTouch = false
+        FarmAOICircle.CanQuery = false
+        FarmAOICircle.CastShadow = false
+        FarmAOICircle.Material = Enum.Material.Neon
+        FarmAOICircle.Transparency = 0.58
+        FarmAOICircle.Parent = GetFarmVisualFolder()
+    end
+    if Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+        and (not FarmNPCAOICircle or not FarmNPCAOICircle.Parent) then
+        FarmNPCAOICircle = Instance.new("Part")
+        FarmNPCAOICircle.Name = "YellowNPCAOICircle"
+        FarmNPCAOICircle.Shape = Enum.PartType.Cylinder
+        FarmNPCAOICircle.Anchored = true
+        FarmNPCAOICircle.CanCollide = false
+        FarmNPCAOICircle.CanTouch = false
+        FarmNPCAOICircle.CanQuery = false
+        FarmNPCAOICircle.CastShadow = false
+        FarmNPCAOICircle.Material = Enum.Material.Neon
+        FarmNPCAOICircle.Color = Color3.fromRGB(255,215,45)
+        FarmNPCAOICircle.Transparency = 0.72
+        FarmNPCAOICircle.Parent = GetFarmVisualFolder()
+    end
+    if Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+        and (not FarmNPCRunCircle or not FarmNPCRunCircle.Parent) then
+        FarmNPCRunCircle = Instance.new("Part")
+        FarmNPCRunCircle.Name = "OrangeNPCRunCircle"
+        FarmNPCRunCircle.Shape = Enum.PartType.Cylinder
+        FarmNPCRunCircle.Anchored = true
+        FarmNPCRunCircle.CanCollide = false
+        FarmNPCRunCircle.CanTouch = false
+        FarmNPCRunCircle.CanQuery = false
+        FarmNPCRunCircle.CastShadow = false
+        FarmNPCRunCircle.Material = Enum.Material.Neon
+        FarmNPCRunCircle.Color = Color3.fromRGB(255,135,40)
+        FarmNPCRunCircle.Transparency = 0.68
+        FarmNPCRunCircle.Parent = GetFarmVisualFolder()
+    end
+
+    -- This is the local decision AOI, not the full 1,000-stud NPC scan.
+    -- Keeping it at telegraph scale makes it useful without covering the map.
+    local radius = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+        and math.max(20,Hub.State.WinterAOIRange or 40)
+        or math.max(5,Hub.State.FarmStopDistance+2)
+    FarmAOICircle.Size = Vector3.new(0.10,radius*2,radius*2)
+    FarmAOICircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.8,0))*CFrame.Angles(0,0,math.rad(90))
+    if state == "DODGE" then
+        FarmAOICircle.Color = Color3.fromRGB(255,55,55)
+    elseif state == "HOLD" then
+        FarmAOICircle.Color = Color3.fromRGB(255,215,45)
+    else
+        FarmAOICircle.Color = Color3.fromRGB(55,255,105)
+    end
+end
+
+-- Keep the AOI attached on every rendered frame. AI decisions can stay at
+-- their efficient update rate without making the circle visibly lag behind.
+table.insert(Hub.Connections,RunService.RenderStepped:Connect(function()
+    local root = FARM_CONFIG.AOIRoot
+    if FarmAOICircle and FarmAOICircle.Parent and root and root.Parent then
+        local radius = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+            and math.max(20,Hub.State.WinterAOIRange or 40)
+            or math.max(5,Hub.State.FarmStopDistance+2)
+        FarmAOICircle.Size = Vector3.new(0.10,radius*2,radius*2)
+        FarmAOICircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.8,0))*CFrame.Angles(0,0,math.rad(90))
+        if FarmNPCAOICircle and FarmNPCAOICircle.Parent then
+            local runRadius = math.max(4,Hub.State.WinterNPCAOIRange or 18)
+            local npcRadius = math.max(runRadius+2,Hub.State.WinterAttackAOIRange or 32)
+            FarmNPCAOICircle.Size = Vector3.new(0.12,npcRadius*2,npcRadius*2)
+            FarmNPCAOICircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.72,0))*CFrame.Angles(0,0,math.rad(90))
+            FarmNPCAOICircle.Transparency = Hub.State.FarmDungeon == "Winter Outpost (Legacy)" and 0.72 or 1
+            if FarmNPCRunCircle and FarmNPCRunCircle.Parent then
+                FarmNPCRunCircle.Size = Vector3.new(0.14,runRadius*2,runRadius*2)
+                FarmNPCRunCircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.64,0))*CFrame.Angles(0,0,math.rad(90))
+                FarmNPCRunCircle.Transparency = Hub.State.FarmDungeon == "Winter Outpost (Legacy)" and 0.68 or 1
+            end
+        end
+
+        local humanoid = root.Parent and root.Parent:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            if FARM_CONFIG.AOIState == "DODGE" and FarmCombatMoveDirection then
+                humanoid:Move(FarmCombatMoveDirection,false)
+            elseif FARM_CONFIG.AOIState == "HOLD" and FARM_CONFIG.WinterYellowMoveDirection then
+                humanoid:Move(FARM_CONFIG.WinterYellowMoveDirection,false)
+            end
+        end
+    end
+end))
 
 local function AddRoutePart(position,size,color)
     local part = Instance.new("Part")
@@ -1415,7 +2037,10 @@ local function IsAttackAnimationPlaying(humanoid)
     if not ok then return false end
     for _,track in ipairs(tracks) do
         local name = string.lower(track.Name or "")
-        if track.IsPlaying and (name:find("attack") or name:find("charge") or name:find("slam") or name:find("lunge")) then
+        if track.IsPlaying and (name:find("attack") or name:find("charge")
+            or name:find("slam") or name:find("lunge") or name:find("cast")
+            or name:find("shoot") or name:find("spell") or name:find("beam")
+            or name:find("magic")) then
             return true
         end
     end
@@ -1424,13 +2049,17 @@ end
 
 local function GetLiveEnemies(position)
     local result = {}
+    local scanRadius = Hub.State.FarmScanRadius or FARM_CONFIG.ScanRadius
+    if Hub.State.FarmDungeon == "Winter Outpost (Legacy)" then
+        scanRadius = math.max(scanRadius,FARM_CONFIG.WinterScanRadius)
+    end
     for model,humanoid in pairs(NPCCandidates) do
         if not model.Parent or not humanoid:IsDescendantOf(model) then
             NPCCandidates[model] = nil
         elseif humanoid.Health > 0 and Players:GetPlayerFromCharacter(model) == nil
             and model ~= LocalPlayer.Character and IsFarmEnemy(model) then
             local root = GetTaggedRoot(model)
-            if root and (root.Position-position).Magnitude <= (Hub.State.FarmScanRadius or FARM_CONFIG.ScanRadius) then
+            if root and (root.Position-position).Magnitude <= scanRadius then
                 table.insert(result,{model=model,humanoid=humanoid,root=root,distance=(root.Position-position).Magnitude})
             end
         end
@@ -1500,6 +2129,71 @@ local function HasIncomingAttack(root,group)
             local speed = velocity.Magnitude
             if speed >= 18 and speed > 0 and offset.Unit:Dot(velocity.Unit) > 0.62 then
                 return true
+            end
+        end
+    end
+    return false
+end
+
+local function IsWinterRangedEnemy(model)
+    local name = string.lower(model.Name or "")
+    return name:find("frost wizard",1,true) ~= nil
+        or name:find("wizard",1,true) ~= nil
+        or name:find("ice mage",1,true) ~= nil
+        or name:find("ranged",1,true) ~= nil
+end
+
+local function HasWinterRangedAttack(root,group)
+    if WinterBeamVisibleAt(root) then return true end
+    for _,entry in ipairs(group) do
+        if IsWinterRangedEnemy(entry.model) then
+            local distance = (root.Position-entry.root.Position).Magnitude
+            if distance <= math.max(FARM_CONFIG.ScanRadius,110) then
+                if IsTrueAttribute(entry.model,{"Attacking","IsAttacking","Attack","Casting","Cast","Charging","PreparingAttack","Beam","Projectile","IceBeam"})
+                    or IsAttackAnimationPlaying(entry.humanoid) then
+                    return true
+                end
+                for _,descendant in ipairs(entry.model:GetDescendants()) do
+                    local name = string.lower(descendant.Name or "")
+                    if descendant:IsA("BasePart") then
+                        local size = descendant.Size
+                        local longest = math.max(size.X,size.Y,size.Z)
+                        local shortest = math.min(size.X,size.Y,size.Z)
+                        local color = descendant.Color
+                        local blueBeam = color.B > 0.42
+                            and color.B > color.R*1.18
+                            and color.B > color.G*0.92
+                            and descendant.Transparency < 0.92
+                            and longest >= 5
+                            and longest >= math.max(shortest*3,3)
+                        if blueBeam then return true end
+                    elseif descendant:IsA("Beam") and descendant.Enabled then
+                        local keypoints = descendant.Color.Keypoints
+                        if #keypoints > 0 then
+                            local color = keypoints[1].Value
+                            if color.B > 0.42 and color.B > color.R*1.18
+                                and color.B > color.G*0.92 then
+                                return true
+                            end
+                        end
+                    end
+                    if name:find("projectile",1,true) or name:find("icebeam",1,true)
+                        or name:find("ice_beam",1,true) or name:find("bolt",1,true)
+                        or name:find("cast",1,true) then
+                        if (descendant:IsA("BasePart") and descendant.Transparency < 0.95)
+                            or ((descendant:IsA("Beam") or descendant:IsA("ParticleEmitter")) and descendant.Enabled) then
+                            return true
+                        end
+                    end
+                end
+                -- Some Legacy Frost Wizards do not expose a useful cast
+                -- attribute or animation. At stop distance, facing the
+                -- player is a conservative ranged-threat signal.
+                local toPlayer = root.Position-entry.root.Position
+                if toPlayer.Magnitude > 0 then
+                    local facing = entry.root.CFrame.LookVector:Dot(toPlayer.Unit)
+                    if facing > 0.55 then return true end
+                end
             end
         end
     end
@@ -1620,10 +2314,12 @@ local function FaceCombatTarget(root,humanoid,targetRoot)
     root.CFrame = CFrame.lookAt(root.Position,lookPosition)
 end
 
-IsDodgePointOpen = function(root,position,group)
+IsDodgePointOpen = function(root,position,group,extraIgnore)
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    local exclusions = {LocalPlayer.Character}
+    if extraIgnore then table.insert(exclusions,extraIgnore) end
+    rayParams.FilterDescendantsInstances = exclusions
     local direction = position-root.Position
     if workspace:Raycast(root.Position+Vector3.new(0,2,0),direction,rayParams) then return false end
     local floorHit = workspace:Raycast(position+Vector3.new(0,5,0),Vector3.new(0,-12,0),rayParams)
@@ -1691,13 +2387,70 @@ local function BeginDodge(root,humanoid,group)
     return true
 end
 
+local function BeginWinterRangedDodge(root,humanoid,group)
+    local now = os.clock()
+    if now-FarmLastDodgeAt < FARM_CONFIG.DodgeCooldown then return false end
+    local center = Vector3.zero
+    for _,entry in ipairs(group) do center += entry.root.Position end
+    if #group > 0 then center /= #group end
+    local away = Vector3.new(root.Position.X-center.X,0,root.Position.Z-center.Z)
+    if away.Magnitude < 0.05 then away = Vector3.new(0,0,1) end
+    away = away.Unit
+    local side = Vector3.new(-away.Z,0,away.X)
+    local candidates = {
+        (away*0.8+side*1.1).Unit,
+        (away*0.8-side*1.1).Unit,
+        (away*0.55+side).Unit,
+        (away*0.55-side).Unit,
+    }
+    local bestPosition,bestDirection,bestScore
+    for _,direction in ipairs(candidates) do
+        local position = root.Position+direction*FARM_CONFIG.DodgeDistance
+        if IsDodgePointOpen(root,position,group) then
+            local nearest = math.huge
+            for _,entry in ipairs(group) do nearest = math.min(nearest,(position-entry.root.Position).Magnitude) end
+            local score = nearest + direction:Dot(away)*5
+            if not bestScore or score > bestScore then
+                bestPosition,bestDirection,bestScore = position,direction,score
+            end
+        end
+    end
+    if not bestPosition then return false end
+    local sideAmount = bestDirection:Dot(side)
+    FarmStrafeSign = sideAmount >= 0 and 1 or -1
+    FarmDodgeKey = FarmStrafeSign > 0 and "d" or "a"
+    FarmDodgePosition = bestPosition
+    FarmDodgeUntil = now+FARM_CONFIG.DodgeDuration
+    FarmLastDodgeAt = now
+    FarmState = "WINTER_DODGING"
+    FarmContinuousMove = true
+    FarmCombatMoveDirection = bestDirection
+    FarmRetreatWaypoints = nil
+    FarmRetreatWaypointIndex = nil
+    if FarmPathBlockedConnection then
+        FarmPathBlockedConnection:Disconnect()
+        FarmPathBlockedConnection = nil
+    end
+    FarmPath = nil
+    FarmWaypoints = nil
+    FarmWaypointIndex = nil
+    FarmPathTarget = nil
+    FarmPathRoot = nil
+    FarmPathGoal = nil
+    FarmNextRepathAt = 0
+    SetFarmHeldKeys({"s",FarmDodgeKey})
+    FarmMoveTo(humanoid,bestPosition,true)
+    return true
+end
+
 local function UpdateDodge(root,humanoid)
     if not FarmDodgePosition then return false end
+    local telegraphDodge = FarmState == "WINTER TELEGRAPH DODGE"
     local currentTargetRoot = FarmCombatTarget and GetTaggedRoot(FarmCombatTarget)
     FaceCombatTarget(root,humanoid,currentTargetRoot)
-    if os.clock() >= FarmDodgeUntil or (root.Position-FarmDodgePosition).Magnitude <= 2.5 then
+    if os.clock() >= FarmDodgeUntil
+        or (not telegraphDodge and (root.Position-FarmDodgePosition).Magnitude <= 2.5) then
         if FarmContinuousMove then humanoid:Move(Vector3.zero,false) end
-        ReleaseFarmKeys()
         ReleaseFarmKeys()
         FarmDodgePosition = nil
         FarmDodgeUntil = 0
@@ -1710,7 +2463,13 @@ local function UpdateDodge(root,humanoid)
         return false
     end
     if FarmContinuousMove and FarmCombatMoveDirection then
-        SetFarmHeldKeys({"s",FarmStrafeSign > 0 and "d" or "a"})
+        SetFarmHeldKeys(telegraphDodge
+            and {FarmDodgeKey or (FarmStrafeSign > 0 and "d" or "a")}
+            or {"s",FarmStrafeSign > 0 and "d" or "a"})
+        local winterDodge = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+        -- Keep the lateral dodge responsive even when the executor's
+        -- keyboard bridge drops or delays held-key events.  This does not
+        -- press W and it does not fight the facing controller.
         local retreatWaypoint = FarmRetreatWaypoints and FarmRetreatWaypoints[FarmRetreatWaypointIndex]
         while retreatWaypoint and (root.Position-retreatWaypoint.Position).Magnitude <= FARM_CONFIG.WaypointReachDistance do
             FarmRetreatWaypointIndex += 1
@@ -1725,13 +2484,15 @@ local function UpdateDodge(root,humanoid)
             if routeDirection.Magnitude > 0.1 then
                 FarmCombatMoveDirection = routeDirection.Unit
             end
-            FarmMoveTo(humanoid,retreatWaypoint.Position)
+            if not winterDodge then
+                FarmMoveTo(humanoid,retreatWaypoint.Position)
+            end
         else
-            if not (type(keypress) == "function" and type(keyrelease) == "function") then
+            if not winterDodge and not (type(keypress) == "function" and type(keyrelease) == "function") then
                 FarmMoveTo(humanoid,FarmDodgePosition)
             end
         end
-        if currentTargetRoot and currentTargetRoot.Parent then
+        if not telegraphDodge and currentTargetRoot and currentTargetRoot.Parent then
             local away = Vector3.new(root.Position.X-currentTargetRoot.Position.X,0,root.Position.Z-currentTargetRoot.Position.Z)
             if away.Magnitude > 0.05 then
                 away = away.Unit
@@ -1739,6 +2500,20 @@ local function UpdateDodge(root,humanoid)
                 if not retreatWaypoint then
                     FarmCombatMoveDirection = (away*0.3+side).Unit
                 end
+            end
+        end
+        if winterDodge then
+            -- FaceCombatTarget keeps LookVector aimed at the wizard. Use the
+            -- character axes directly so the dodge always has a real
+            -- left/right component instead of only moving away.
+            local backward = -root.CFrame.LookVector
+            local lateral = root.CFrame.RightVector*FarmStrafeSign
+            local dodgeDirection = telegraphDodge and FarmCombatMoveDirection or Vector3.new(
+                backward.X*0.65+lateral.X,0,backward.Z*0.65+lateral.Z
+            )
+            if dodgeDirection.Magnitude > 0.05 then
+                FarmCombatMoveDirection = dodgeDirection.Unit
+                humanoid:Move(FarmCombatMoveDirection,false)
             end
         end
         -- Never synthesize W/A/S/D here. Keyboard injection can toggle the menu
@@ -1815,7 +2590,15 @@ local function ComputeFarmPath(characterRoot, targetRoot, targetModel)
     end
     if not path then
         local fallback = approachPoints[1]
-        StopFarmPath(nil)
+        -- A temporary path failure must not release and re-press W. Preserve
+        -- pursuit input while the fallback MoveTo command keeps us moving.
+        if FarmPathBlockedConnection then
+            FarmPathBlockedConnection:Disconnect()
+            FarmPathBlockedConnection = nil
+        end
+        FarmPath = nil
+        FarmWaypoints = nil
+        FarmWaypointIndex = nil
         FarmPathTarget = targetModel
         FarmPathRoot = characterRoot
         FarmPathGoal = fallback
@@ -1880,13 +2663,22 @@ local function FollowFarmPath(characterRoot, humanoid, targetRoot, targetModel)
         FarmWaypointIndex += 1
         waypoint = FarmWaypoints[FarmWaypointIndex]
     end
-    -- Skip short intermediate blocks when the next route segment is already
-    -- close enough; this keeps movement continuous through generated rooms.
-    if waypoint and waypoint.Action ~= Enum.PathWaypointAction.Jump and FarmWaypoints[FarmWaypointIndex+1]
-        and FarmWaypoints[FarmWaypointIndex+1].Action ~= Enum.PathWaypointAction.Jump
-        and (waypoint.Position-characterRoot.Position).Magnitude <= 9 then
+    -- Look farther down straight path sections so MoveTo does not pause at
+    -- every tiny block. Sharp corners and jump points remain intact.
+    while waypoint and waypoint.Action ~= Enum.PathWaypointAction.Jump do
+        local nextWaypoint = FarmWaypoints[FarmWaypointIndex+1]
+        if not nextWaypoint or nextWaypoint.Action == Enum.PathWaypointAction.Jump
+            or (nextWaypoint.Position-characterRoot.Position).Magnitude > FARM_CONFIG.WinterRouteLookahead then
+            break
+        end
+        local currentDirection = waypoint.Position-characterRoot.Position
+        local nextDirection = nextWaypoint.Position-waypoint.Position
+        if currentDirection.Magnitude > 0.1 and nextDirection.Magnitude > 0.1
+            and currentDirection.Unit:Dot(nextDirection.Unit) < 0.72 then
+            break
+        end
         FarmWaypointIndex += 1
-        waypoint = FarmWaypoints[FarmWaypointIndex]
+        waypoint = nextWaypoint
     end
     if waypoint then
         if waypoint.Action == Enum.PathWaypointAction.Jump then humanoid.Jump = true end
@@ -1913,7 +2705,492 @@ local function TryAutoPickup(root, now)
     end
 end
 
+local function BeginWinterTelegraphDodge(root,humanoid,group,suppliedThreat)
+    local threat = suppliedThreat or GetWinterLaserThreat(root)
+    if not threat then return false end
+    local now = os.clock()
+    if now-FarmLastDodgeAt < FARM_CONFIG.DodgeCooldown then return false end
+
+    local away = Vector3.new(0,0,0)
+    for _,entry in ipairs(group) do
+        local delta = Vector3.new(root.Position.X-entry.root.Position.X,0,root.Position.Z-entry.root.Position.Z)
+        if delta.Magnitude > 0.05 then away += delta.Unit end
+    end
+    if away.Magnitude < 0.05 then away = -threat.direction end
+    away = Vector3.new(away.X,0,away.Z).Unit
+    local beamDirection = Vector3.new(threat.direction.X,0,threat.direction.Z)
+    if beamDirection.Magnitude < 0.05 then return false end
+    beamDirection = beamDirection.Unit
+    local side = Vector3.new(-beamDirection.Z,0,beamDirection.X)
+    local candidates = {
+        side, -side, (side+away*0.30).Unit, (-side+away*0.30).Unit,
+        Vector3.new(-root.CFrame.LookVector.X,0,-root.CFrame.LookVector.Z).Unit,
+    }
+    local bestPosition,bestDirection,bestScore
+    for _,direction in ipairs(candidates) do
+        local position = root.Position+direction*FARM_CONFIG.DodgeDistance
+        local offset = position-threat.origin
+        local along = math.clamp(offset:Dot(threat.direction),0,threat.length)
+        local closest = threat.origin+threat.direction*along
+        local beamClearance = (position-closest).Magnitude
+        if beamClearance >= 6 and IsDodgePointOpen(root,position,group,threat.instance) then
+            local nearest = math.huge
+            for _,entry in ipairs(group) do
+                nearest = math.min(nearest,(position-entry.root.Position).Magnitude)
+            end
+            local score = beamClearance+nearest+direction:Dot(away)*4
+            if not bestScore or score > bestScore then
+                bestPosition,bestDirection,bestScore = position,direction,score
+            end
+        end
+    end
+    -- Detection must always win. If obstacle scoring cannot approve a point
+    -- during the beam's ~0.21-second lifetime, still force a perpendicular
+    -- dodge instead of silently remaining yellow.
+    if not bestPosition then
+        bestDirection = FarmStrafeSign >= 0 and side or -side
+        bestPosition = root.Position+bestDirection*FARM_CONFIG.DodgeDistance
+    end
+
+    local localDirection = root.CFrame:VectorToObjectSpace(bestDirection)
+    if localDirection.Z > 0.55 and math.abs(localDirection.Z) > math.abs(localDirection.X) then
+        FarmDodgeKey = "s"
+        FarmStrafeSign = localDirection.X >= 0 and 1 or -1
+    else
+        FarmStrafeSign = localDirection.X >= 0 and 1 or -1
+        FarmDodgeKey = FarmStrafeSign > 0 and "d" or "a"
+    end
+    FarmDodgePosition = bestPosition
+    FarmDodgeUntil = now+math.clamp(Hub.State.WinterRedDuration or 1.2,0.1,1.2)
+    FarmLastDodgeAt = now
+    FarmContinuousMove = true
+    FarmCombatMoveDirection = bestDirection
+    FarmRetreatWaypoints = nil
+    FarmRetreatWaypointIndex = nil
+    StopFarmPath(humanoid)
+    FarmState = "WINTER TELEGRAPH DODGE"
+    SetFarmHeldKeys({FarmDodgeKey})
+    FarmMoveTo(humanoid,bestPosition,true)
+    return true
+end
+
+local function StartInstantWinterLaserDodge(root,humanoid,wizardModel)
+    if FarmDodgePosition then return false end
+    local now = os.clock()
+    if now-FarmLastDodgeAt < 0.10 then return false end
+
+    -- Zero geometry work: alternate a pure left/right escape the instant the
+    -- model exists. The exact hitBox detector remains only as a fallback.
+    FarmStrafeSign = -FarmStrafeSign
+    FarmDodgeKey = FarmStrafeSign > 0 and "d" or "a"
+    local direction = root.CFrame.RightVector*FarmStrafeSign
+    direction = Vector3.new(direction.X,0,direction.Z).Unit
+
+    local faceModel = wizardModel or FarmCombatTarget
+    StopFarmPath(humanoid)
+    FarmCombatTarget = faceModel
+    FarmDodgePosition = root.Position+direction*18
+    FarmDodgeUntil = now+math.clamp(Hub.State.WinterRedDuration or 1.2,0.1,1.2)
+    FarmLastDodgeAt = now
+    FarmState = "WINTER TELEGRAPH DODGE"
+    FarmContinuousMove = true
+    FarmCombatMoveDirection = direction
+    FarmRetreatWaypoints = nil
+    FarmRetreatWaypointIndex = nil
+    humanoid.AutoRotate = false
+    local wizardRoot = faceModel and GetTaggedRoot(faceModel)
+    if wizardRoot then FaceCombatTarget(root,humanoid,wizardRoot) end
+    SetFarmHeldKeys({FarmDodgeKey})
+    humanoid:Move(direction,false)
+    SetFarmAOI(root,"DODGE")
+    SetFarmStatus("WINTER: RED • immediate laser event • holding "..string.upper(FarmDodgeKey))
+    return true
+end
+
+local function HasWinterRangedEnemyInAOI(root)
+    local range = Hub.State.WinterAOIRange or 40
+    local nearestModel,nearestDistance
+    for model,enemyHumanoid in pairs(NPCCandidates) do
+        if model and model.Parent and enemyHumanoid and enemyHumanoid.Health > 0
+            and IsWinterRangedEnemy(model) then
+            local enemyRoot = GetTaggedRoot(model)
+            if enemyRoot then
+                local delta = enemyRoot.Position-root.Position
+                local distance = Vector3.new(delta.X,0,delta.Z).Magnitude
+                if distance <= range and (not nearestDistance or distance < nearestDistance) then
+                    nearestModel,nearestDistance = model,distance
+                end
+            end
+        end
+    end
+    return nearestModel
+end
+
+FARM_CONFIG.WinterPrefireAnimationId = "110089313901179"
+FARM_CONFIG.WinterAnimationConnections = setmetatable({},{__mode="k"})
+
+local function AttachWinterPrefireAnimation(model,enemyHumanoid)
+    if not model or not enemyHumanoid or FARM_CONFIG.WinterAnimationConnections[enemyHumanoid]
+        or not IsWinterRangedEnemy(model) then return end
+    local connection = enemyHumanoid.AnimationPlayed:Connect(function(track)
+        local animation = track.Animation
+        local animationId = tostring(animation and animation.AnimationId or ""):match("%d+")
+        if animationId ~= FARM_CONFIG.WinterPrefireAnimationId
+            or not Hub.State.AutoFarm or Hub.State.FarmDungeon ~= "Winter Outpost (Legacy)"
+            or Hub.Destroyed then return end
+
+        local root,humanoid = GetFarmRoot()
+        local enemyRoot = GetTaggedRoot(model)
+        if not root or not humanoid or humanoid.Health <= 0 or not enemyRoot then return end
+        local delta = enemyRoot.Position-root.Position
+        if Vector3.new(delta.X,0,delta.Z).Magnitude > (Hub.State.WinterAOIRange or 40) then return end
+
+        if StartInstantWinterLaserDodge(root,humanoid,model) then
+            SetFarmStatus("WINTER: RED • exact wizard pre-fire • holding "..string.upper(FarmDodgeKey))
+        end
+    end)
+    FARM_CONFIG.WinterAnimationConnections[enemyHumanoid] = connection
+    table.insert(Hub.Connections,connection)
+end
+
+for model,enemyHumanoid in pairs(NPCCandidates) do
+    AttachWinterPrefireAnimation(model,enemyHumanoid)
+end
+
+table.insert(Hub.Connections,workspace.DescendantAdded:Connect(function(instance)
+    if instance:IsA("Humanoid") then
+        local model = instance.Parent
+        if model and model:IsA("Model") then
+            AttachWinterPrefireAnimation(model,instance)
+        end
+    end
+end))
+
+-- This callback performs no waiting, scanning, raycasts, or hitBox checks.
+-- It starts A/D in the same scheduler event that exposes laserBeam.
+table.insert(Hub.Connections,workspace.ChildAdded:Connect(function(object)
+    if not Hub.State.AutoFarm or Hub.State.FarmDungeon ~= "Winter Outpost (Legacy)"
+        or string.lower(object.Name or "") ~= "laserbeam" or not object:IsA("Model") then
+        return
+    end
+    if Hub.Destroyed then return end
+    local root,humanoid = GetFarmRoot()
+    local wizardModel = root and HasWinterRangedEnemyInAOI(root)
+    if root and humanoid and humanoid.Health > 0 and wizardModel then
+        StartInstantWinterLaserDodge(root,humanoid,wizardModel)
+    end
+end))
+
+local function GetWinterLockedCombat(root)
+    local live = {}
+    local models = {}
+    local nearestRoot,nearestModel,nearestDistance
+    for _,model in ipairs(WinterRouteState.LockedGroup) do
+        local humanoid = model and model.Parent and NPCCandidates[model]
+        local enemyRoot = humanoid and humanoid.Health > 0 and GetTaggedRoot(model)
+        if enemyRoot and IsFarmEnemy(model) then
+            local delta = enemyRoot.Position-root.Position
+            local distance = Vector3.new(delta.X,0,delta.Z).Magnitude
+            table.insert(models,model)
+            table.insert(live,{model=model,humanoid=humanoid,root=enemyRoot,distance=distance})
+            if not nearestDistance or distance < nearestDistance then
+                nearestRoot,nearestModel,nearestDistance = enemyRoot,model,distance
+            end
+        end
+    end
+    WinterRouteState.LockedGroup = models
+    table.sort(live,function(a,b) return a.distance < b.distance end)
+    return nearestRoot,live,nearestModel,nearestDistance
+end
+
+local function SelectWinterRetreatDirection(root,target,group)
+    local away = Vector3.new(root.Position.X-target.Position.X,0,root.Position.Z-target.Position.Z)
+    if away.Magnitude < 0.05 then
+        away = Vector3.new(-root.CFrame.LookVector.X,0,-root.CFrame.LookVector.Z)
+    end
+    if away.Magnitude < 0.05 then away = Vector3.new(0,0,1) end
+    away = away.Unit
+    local side = Vector3.new(-away.Z,0,away.X)
+    local preferredSide = side*FarmStrafeSign
+    local candidates = {
+        (away*0.75+preferredSide).Unit,
+        (away*0.45+preferredSide).Unit,
+        preferredSide,
+        (away*0.75-preferredSide).Unit,
+        (away*0.45-preferredSide).Unit,
+        -preferredSide,
+        away,
+    }
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character}
+    local bestDirection,bestScore
+    for _,direction in ipairs(candidates) do
+        local travel = direction*12
+        local wallHit = workspace:Raycast(root.Position+Vector3.new(0,1.5,0),travel,rayParams)
+        local clearance = wallHit and wallHit.Distance or 12
+        local destination = root.Position+direction*math.min(10,math.max(4,clearance-1.5))
+        local floorHit = workspace:Raycast(
+            destination+Vector3.new(0,5,0),Vector3.new(0,-13,0),rayParams
+        )
+        if floorHit and clearance >= 4 then
+            local nearestEnemy = math.huge
+            for _,entry in ipairs(group) do
+                nearestEnemy = math.min(nearestEnemy,(destination-entry.root.Position).Magnitude)
+            end
+            if nearestEnemy == math.huge then nearestEnemy = 20 end
+            local stableSide = direction:Dot(preferredSide)
+            local score = clearance*2+nearestEnemy+direction:Dot(away)*3+stableSide*2
+            if not bestScore or score > bestScore then
+                bestDirection,bestScore = direction,score
+            end
+        end
+    end
+
+    if not bestDirection then bestDirection = preferredSide end
+    FarmStrafeSign = bestDirection:Dot(side) >= 0 and 1 or -1
+    return bestDirection
+end
+
+local function FollowWinterFixedRoute(root,humanoid)
+    local route = FARM_CONFIG.WinterRoutes[WinterRouteState.Room]
+    if not route or #route == 0 then return false,true end
+
+    if WinterRouteState.Character ~= root.Parent then
+        WinterRouteState.Character = root.Parent
+        WinterRouteState.Index = 1
+        WinterRouteState.Recovering = false
+        local nearestDistance = math.huge
+        for index,point in ipairs(route) do
+            local distance = (root.Position-point).Magnitude
+            if distance < nearestDistance then
+                nearestDistance = distance
+                WinterRouteState.Index = index
+            end
+        end
+    end
+
+    local index = math.clamp(WinterRouteState.Index,1,#route)
+
+    -- If combat, a collision, or a dodge pushes the character away from the
+    -- expected line, reacquire the closest recorded point in this room.
+    if not WinterRouteState.Recovering and (root.Position-route[index]).Magnitude > 14 then
+        local closestIndex,closestDistance = index,math.huge
+        for candidate,point in ipairs(route) do
+            local distance = (root.Position-point).Magnitude
+            if distance < closestDistance then
+                closestIndex,closestDistance = candidate,distance
+            end
+        end
+        WinterRouteState.Index = closestIndex
+        WinterRouteState.Recovering = true
+        index = closestIndex
+    end
+
+    if WinterRouteState.Recovering then
+        local recoveryPoint = route[index]
+        if (root.Position-recoveryPoint).Magnitude > 4.5 then
+            SetFarmHeldKeys({"w"})
+            humanoid.AutoRotate = true
+            FarmMoveTo(humanoid,recoveryPoint,true)
+            return true,false
+        end
+        WinterRouteState.Recovering = false
+    end
+
+    while index < #route and (root.Position-route[index]).Magnitude <= 5.5 do
+        index += 1
+    end
+
+    -- Recover only forward after combat. The bot never restarts or chases an
+    -- NPC; it rejoins the closest upcoming point in this small route window.
+    local bestIndex,bestDistance = index,(root.Position-route[index]).Magnitude
+    for candidate = index+1,math.min(#route,index+10) do
+        local distance = (root.Position-route[candidate]).Magnitude
+        if distance+1 < bestDistance then
+            bestIndex,bestDistance = candidate,distance
+        end
+    end
+    index = bestIndex
+    WinterRouteState.Index = index
+
+    if index == #route and (root.Position-route[index]).Magnitude <= 5.5 then
+        local nextRoute = FARM_CONFIG.WinterRoutes[WinterRouteState.Room+1]
+        if nextRoute and #nextRoute > 0 then
+            WinterRouteState.Room += 1
+            WinterRouteState.Index = 1
+            WinterRouteState.Recovering = false
+            -- Keep the same W hold across connected room boundaries.
+            return FollowWinterFixedRoute(root,humanoid)
+        end
+        ReleaseFarmKeys()
+        humanoid:Move(Vector3.zero,false)
+        return false,true
+    end
+
+    local aimIndex = index
+    for candidate = index+1,math.min(#route,index+6) do
+        if (route[candidate]-root.Position).Magnitude <= FARM_CONFIG.WinterRouteLookahead then
+            aimIndex = candidate
+        else
+            break
+        end
+    end
+    local destination = route[aimIndex]
+    SetFarmHeldKeys({"w"})
+    humanoid.AutoRotate = true
+    FarmMoveTo(humanoid,destination)
+    return true,false
+end
+
+local function StepWinterOutpost()
+    SetWinterNoclip(false)
+    local root,humanoid = GetFarmRoot()
+    if not root or not humanoid or humanoid.Health <= 0 then
+        StopFarmPath(humanoid)
+        SetFarmStatus("Winter route waiting for your character...")
+        return
+    end
+
+    -- laserBeam exists for only about 0.21 seconds, so inspect it before NPC
+    -- selection, AOI transitions, or fixed-route work can consume this tick.
+    if not FarmDodgePosition and HasWinterRangedEnemyInAOI(root) then
+        local immediateThreat = GetWinterLaserThreat(root)
+        if immediateThreat and BeginWinterTelegraphDodge(
+            root,humanoid,FarmCombatGroup or {},immediateThreat
+        ) then
+            SetFarmAOI(root,"DODGE")
+            SetFarmStatus("WINTER: RED • laserBeam.hitBox detected • attacks paused")
+            return
+        end
+    end
+
+    -- A dead locked group immediately cancels red/yellow movement and returns
+    -- control to the fixed route on this same AI update.
+    if FarmDodgePosition and #WinterRouteState.LockedGroup > 0 then
+        local aliveTarget,_,_,aliveDistance = GetWinterLockedCombat(root)
+        if not aliveTarget or aliveDistance > (Hub.State.WinterAOIRange or 40) then
+            FarmDodgePosition = nil
+            FarmDodgeUntil = 0
+            FarmContinuousMove = false
+            FarmCombatMoveDirection = nil
+            FarmDodgeKey = nil
+            FarmCombatRangeActive = false
+            FarmCombatTarget = nil
+            ReleaseFarmKeys()
+            humanoid:Move(Vector3.zero,false)
+        end
+    end
+
+    if UpdateDodge(root,humanoid) then
+        SetFarmAOI(root,"DODGE")
+        SetFarmStatus("WINTER: dodging laserBeam")
+        if Hub.State.AutoPickup then TryAutoPickup(root,os.clock()) end
+        return
+    end
+
+    local target,group,targetModel,targetDistance
+    if #WinterRouteState.LockedGroup > 0 then
+        target,group,targetModel,targetDistance = GetWinterLockedCombat(root)
+        local runRange = Hub.State.WinterNPCAOIRange or 18
+        local attackRange = math.max(runRange+2,Hub.State.WinterAttackAOIRange or 32)
+        local yellowReleaseRange = attackRange+6
+        FarmCombatRangeActive = target ~= nil
+            and targetDistance <= yellowReleaseRange
+    else
+        target,group,targetModel = SelectCombatGroup(root.Position)
+        if target then
+            local delta = target.Position-root.Position
+            targetDistance = Vector3.new(delta.X,0,delta.Z).Magnitude
+        else
+            targetDistance = math.huge
+        end
+        local runRange = Hub.State.WinterNPCAOIRange or 18
+        local combatTrigger = math.max(runRange+2,Hub.State.WinterAttackAOIRange or 32)
+        if target and targetDistance <= combatTrigger then
+            table.clear(WinterRouteState.LockedGroup)
+            for _,entry in ipairs(group) do
+                table.insert(WinterRouteState.LockedGroup,entry.model)
+            end
+            FarmCombatRangeActive = true
+        else
+            FarmCombatRangeActive = false
+        end
+    end
+
+    -- A confirmed laser intersection outranks the normal yellow AOI. This is
+    -- checked before fixed-route movement so the 0.21-second model is not lost.
+    if target and targetDistance <= (Hub.State.WinterAOIRange or 40)
+        and BeginWinterTelegraphDodge(root,humanoid,group) then
+        if #WinterRouteState.LockedGroup == 0 then
+            for _,entry in ipairs(group) do
+                table.insert(WinterRouteState.LockedGroup,entry.model)
+            end
+        end
+        FarmCombatTarget = targetModel
+        FarmCombatRangeActive = true
+        SetFarmAOI(root,"DODGE")
+        SetFarmStatus(string.format("WINTER: laserBeam hitBox dodge • group=%d • attacks paused",#group))
+        return
+    end
+
+    if not FarmCombatRangeActive or not target then
+        table.clear(WinterRouteState.LockedGroup)
+        FarmCombatRangeActive = false
+        FarmCombatTarget = nil
+        humanoid:Move(Vector3.zero,false)
+        SetFarmAOI(root,"PURSUE")
+        local moving,complete = FollowWinterFixedRoute(root,humanoid)
+        local activeRoute = FARM_CONFIG.WinterRoutes[WinterRouteState.Room] or {}
+        FarmState = moving and "WINTER FIXED ROUTE" or "WINTER ROUTE WAITING"
+        SetFarmStatus(WinterRouteState.Recovering
+            and string.format("WINTER: retracking closest point • Room %d • point %d/%d",WinterRouteState.Room,WinterRouteState.Index,#activeRoute)
+            or complete
+            and string.format("WINTER: Room %d route complete — waiting for Room %d data",WinterRouteState.Room,WinterRouteState.Room+1)
+            or string.format("WINTER: fixed Room %d route • point %d/%d",WinterRouteState.Room,WinterRouteState.Index,#activeRoute))
+        if Hub.State.AutoPickup then TryAutoPickup(root,os.clock()) end
+        return
+    end
+
+    FarmCombatTarget = targetModel
+    FarmCombatGroup = group
+    UpdateFarmVisuals(root,target,targetModel)
+
+    SetFarmAOI(root,"HOLD")
+    if FarmPath or FarmHeldKeys.w then
+        StopFarmPath(humanoid)
+        FarmCombatTarget = targetModel
+        FarmCombatGroup = group
+        FarmCombatRangeActive = true
+    end
+    humanoid.AutoRotate = false
+    FaceCombatTarget(root,humanoid,target)
+    UseCombatAbilities(true)
+    local runRange = Hub.State.WinterNPCAOIRange or 18
+    if targetDistance <= runRange then
+        local retreatDirection = SelectWinterRetreatDirection(root,target,group)
+        -- Inner orange AOI: S remains held and A/D steers around walls.
+        SetFarmHeldKeys({"s",FarmStrafeSign > 0 and "d" or "a"})
+        FARM_CONFIG.WinterYellowMoveDirection = retreatDirection
+        humanoid:Move(retreatDirection,false)
+        SetFarmStatus(string.format("WINTER: NPC too close • S + %s • Q/E",FarmStrafeSign > 0 and "D" or "A"))
+    else
+        -- Between the yellow attack AOI and orange run AOI, hold position,
+        -- face the group, and attack while allowing it to approach.
+        ReleaseFarmKeys()
+        FARM_CONFIG.WinterYellowMoveDirection = nil
+        humanoid:Move(Vector3.zero,false)
+        SetFarmStatus(string.format("WINTER: attack AOI • letting group approach • Q/E • %.1f studs",targetDistance))
+    end
+    if Hub.State.AutoPickup then TryAutoPickup(root,os.clock()) end
+end
+
 local function StepAutoFarm()
+    if Hub.State.FarmDungeon == "Winter Outpost (Legacy)" then
+        return StepWinterOutpost()
+    end
+    SetWinterNoclip(false)
     local root,humanoid = GetFarmRoot()
     if not root or not humanoid or humanoid.Health <= 0 then
         StopFarmPath(humanoid)
@@ -1922,6 +3199,11 @@ local function StepAutoFarm()
     end
     if UpdateDodge(root,humanoid) then
         SetFarmStatus("DODGING incoming group attack")
+        local dodgeTarget = FarmCombatTarget and GetTaggedRoot(FarmCombatTarget)
+        if Hub.State.FarmDungeon == "Winter Outpost (Legacy)" and dodgeTarget
+            and (dodgeTarget.Position-root.Position).Magnitude <= Hub.State.FarmStopDistance+2 then
+            UseCombatAbilities(true)
+        end
         if Hub.State.AutoPickup then TryAutoPickup(root,os.clock()) end
         return
     end
@@ -1929,9 +3211,17 @@ local function StepAutoFarm()
     local target,group,targetModel = SelectCombatGroup(root.Position)
     if target then
         ReplayRequested = false
+        local winterMode = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
         local targetDistance = (target.Position-root.Position).Magnitude
         UpdateFarmVisuals(root,target,targetModel)
-        if HasIncomingAttack(root,group) then
+        if winterMode and targetDistance <= Hub.State.FarmStopDistance+2 and HasWinterRangedAttack(root,group) then
+            FaceCombatTarget(root,humanoid,target)
+            if BeginWinterRangedDodge(root,humanoid,group) then
+                UseCombatAbilities(true)
+                SetFarmStatus(string.format("WINTER DODGE S+A/D • %d-enemy group • Q/E",#group))
+                return
+            end
+        elseif HasIncomingAttack(root,group) then
             FaceCombatTarget(root,humanoid,target)
             if BeginDodge(root,humanoid,group) then
                 SetFarmStatus(string.format("DODGING %d-enemy group",#group))
@@ -1945,7 +3235,9 @@ local function StepAutoFarm()
             humanoid.AutoRotate = true
         end
         local retreatTrigger = math.max(Hub.State.FarmStopDistance+6,12)
-        UseCombatAbilities(aggro or targetDistance <= retreatTrigger)
+        UseCombatAbilities(winterMode
+            and targetDistance <= Hub.State.FarmStopDistance+1
+            or (not winterMode and (aggro or targetDistance <= retreatTrigger)))
         if (aggro or targetDistance <= retreatTrigger) and targetDistance <= retreatTrigger then
             ReleaseFarmKeys()
             if BeginRetreat(root,humanoid,group) then
@@ -2017,6 +3309,7 @@ end
 Hub.AutoFarmCleanup = function()
     Hub.State.AutoFarm = false
     FarmWorkerRunning = false
+    SetWinterNoclip(false)
     local _,humanoid = GetFarmRoot()
     StopFarmPath(humanoid)
     ClearFarmVisuals()
@@ -2034,6 +3327,8 @@ end
 
 Section(AutoFarm,"Dungeon farming")
 local DungeonCard = Card(AutoFarm,55)
+DungeonCard.ZIndex = 50
+DungeonCard.ClipsDescendants = false
 local DungeonTitle = Instance.new("TextLabel")
 DungeonTitle.BackgroundTransparency = 1
 DungeonTitle.Position = UDim2.fromOffset(13,5)
@@ -2065,16 +3360,75 @@ DungeonButton.Text = "Desert Temple (Legacy)"
 DungeonButton.TextSize = 9
 DungeonButton.TextColor3 = Theme.Text
 DungeonButton.AutoButtonColor = false
+DungeonButton.ZIndex = 51
 DungeonButton.Parent = DungeonCard
 Round(DungeonButton,5)
 Stroke(DungeonButton,Theme.Border)
-Connect(DungeonButton.MouseButton1Click,function()
-    -- Only Desert Temple Legacy is implemented. Future legacy maps get their
-    -- own routing mode instead of silently using this generated-room logic.
-    Hub.State.FarmDungeon = "Desert Temple (Legacy)"
-    DungeonButton.Text = Hub.State.FarmDungeon
+local LegacyDungeons = {
+    "Desert Temple (Legacy)",
+    "Winter Outpost (Legacy)",
+}
+local DungeonIndex = 1
+for index,name in ipairs(LegacyDungeons) do
+    if Hub.State.FarmDungeon == name then
+        DungeonIndex = index
+        break
+    end
+end
+Hub.State.FarmDungeon = LegacyDungeons[DungeonIndex]
+DungeonButton.Text = Hub.State.FarmDungeon
+local DungeonMenu = Instance.new("Frame")
+DungeonMenu.Position = UDim2.new(1,-155,1,2)
+DungeonMenu.Size = UDim2.fromOffset(145,#LegacyDungeons*30+4)
+DungeonMenu.BackgroundColor3 = Theme.Card2
+DungeonMenu.BorderSizePixel = 0
+DungeonMenu.Visible = false
+DungeonMenu.ZIndex = 52
+DungeonMenu.Parent = DungeonCard
+Round(DungeonMenu,5)
+Stroke(DungeonMenu,Theme.Border)
+
+local function SelectDungeon(name)
+    for index,value in ipairs(LegacyDungeons) do
+        if value == name then DungeonIndex = index break end
+    end
+    Hub.State.FarmDungeon = name
+    if name == "Winter Outpost (Legacy)" then
+        WinterRouteState.Room = 1
+        WinterRouteState.Index = 1
+        WinterRouteState.Character = nil
+        WinterRouteState.Recovering = false
+        table.clear(WinterRouteState.LockedGroup)
+    end
+    DungeonButton.Text = name
+    DungeonMenu.Visible = false
     FarmNextRepathAt = 0
+    if name ~= "Desert Temple (Legacy)" and Hub.State.AutoDungeon then
+        Hub.State.AutoDungeon = false
+        AutoDungeonWorkerRunning = false
+    end
     SaveSettings()
+end
+
+for index,name in ipairs(LegacyDungeons) do
+    local option = Instance.new("TextButton")
+    option.Position = UDim2.fromOffset(2,2+(index-1)*30)
+    option.Size = UDim2.fromOffset(141,28)
+    option.BackgroundColor3 = Theme.Card
+    option.BorderSizePixel = 0
+    option.Font = Enum.Font.GothamBold
+    option.Text = name
+    option.TextSize = 9
+    option.TextColor3 = Theme.Text
+    option.AutoButtonColor = false
+    option.ZIndex = 53
+    option.Parent = DungeonMenu
+    Round(option,4)
+    Connect(option.MouseButton1Click,function() SelectDungeon(name) end)
+end
+
+Connect(DungeonButton.MouseButton1Click,function()
+    DungeonMenu.Visible = not DungeonMenu.Visible
 end)
 Toggle(AutoFarm,"Auto Dungeon","Create/start the selected Legacy dungeon from the lobby.",false,function(enabled)
     Hub.State.AutoDungeon = enabled
@@ -2088,6 +3442,7 @@ Toggle(AutoFarm,"Auto Dungeon","Create/start the selected Legacy dungeon from th
             SetFarmStatus("Auto Dungeon: scanning lobby controls...")
             RunAutoDungeonWorker()
         else
+            Hub.State.AutoDungeon = false
             SetFarmStatus("Auto Dungeon: selected dungeon is not implemented.")
         end
     else
@@ -2111,7 +3466,22 @@ Toggle(AutoFarm,"Auto Start Dungeon","Universal Start button clicker for any dun
 end)
 Toggle(AutoFarm,"Auto Farm Pathing","Walk to the nearest living NPC around obstacles.",false,function(enabled)
     Hub.State.AutoFarm = enabled
-    if enabled then ReplayRequested = false; RunFarmWorker()
+    if enabled and Hub.State.FarmDungeon ~= "Desert Temple (Legacy)"
+        and Hub.State.FarmDungeon ~= "Winter Outpost (Legacy)" then
+        Hub.State.AutoFarm = false
+        SetFarmStatus("Auto Farm Pathing is not implemented for this dungeon.")
+        return
+    end
+    if enabled then
+        ReplayRequested = false
+        if Hub.State.FarmDungeon == "Winter Outpost (Legacy)" then
+            WinterRouteState.Room = 1
+            WinterRouteState.Index = 1
+            WinterRouteState.Character = nil
+            WinterRouteState.Recovering = false
+            table.clear(WinterRouteState.LockedGroup)
+        end
+        RunFarmWorker()
     else
         local _,humanoid = GetFarmRoot()
         StopFarmPath(humanoid)
@@ -2123,7 +3493,19 @@ Slider(AutoFarm,"NPC Stop Distance","Stop this many studs from the NPC.",2,12,4,
     Hub.State.FarmStopDistance = math.floor(value*10)/10
     FarmNextRepathAt = 0
 end)
-Slider(AutoFarm,"NPC Detection Range","Scan this many studs for living NPCs.",50,500,500,function(value)
+Slider(AutoFarm,"Winter AOI Range","Outer AOI used only for red wizard telegraph detection.",15,100,40,function(value)
+    Hub.State.WinterAOIRange = math.floor(value)
+end)
+Slider(AutoFarm,"NPC Run Distance","Lower lets NPCs get closer; higher starts yellow retreat sooner.",4,60,18,function(value)
+    Hub.State.WinterNPCAOIRange = math.floor(value)
+end)
+Slider(AutoFarm,"NPC Attack AOI","Stop on the route, face NPCs, and use Q/E inside this range.",8,80,32,function(value)
+    Hub.State.WinterAttackAOIRange = math.floor(value)
+end)
+Slider(AutoFarm,"Red Dodge Duration","How long red mode holds A or D.",0.1,1.2,1.2,function(value)
+    Hub.State.WinterRedDuration = math.floor(value*100)/100
+end)
+Slider(AutoFarm,"NPC Detection Range","Scan this many studs for living NPCs.",50,1500,1000,function(value)
     Hub.State.FarmScanRadius = math.floor(value)
     FarmNextRepathAt = 0
 end)
@@ -2160,6 +3542,7 @@ task.defer(function()
         RunUniversalStartWorker()
     end
 end)
+end -- farm scope; callbacks above keep their captured state
 
 --============================================================
 -- MOVEMENT
@@ -2690,8 +4073,6 @@ local function AddESP(player)
                 end
             end
         end
-    else
-        FarmMoveTo(humanoid,FarmDodgePosition)
     end
 
     local data = {}
@@ -3077,6 +4458,16 @@ end)
 Connect(TopBar.InputBegan,function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton2 then
         Hub.State.WaitingForMenuKey = true
+    end
+end)
+
+-- Final UI safety guard: farm workers are independent from the menu, so a
+-- controller error must never leave the loaded interface hidden.
+task.defer(function()
+    if Gui and Gui.Parent then
+        Gui.Enabled = true
+        Main.Visible = true
+        Hub.State.Open = true
     end
 end)
 
