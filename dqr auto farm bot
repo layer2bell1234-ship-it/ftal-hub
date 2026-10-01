@@ -54,6 +54,8 @@ local Hub = {
     Connections = {},
     ESPConnections = {},
     ESP = {},
+    SettingControls = {},
+    ConfigNames = {},
     Destroyed = false,
 }
 
@@ -94,6 +96,10 @@ _G.StopFTALMovementVisuals = function()
     if Hub.AutoStartCleanup then
         pcall(Hub.AutoStartCleanup)
         Hub.AutoStartCleanup = nil
+    end
+    if Hub.OptimizationCleanup then
+        pcall(Hub.OptimizationCleanup)
+        Hub.OptimizationCleanup = nil
     end
 end
 
@@ -138,11 +144,19 @@ Hub.State = {
     WinterNPCAOIRange = 18,
     WinterAttackAOIRange = 32,
     WinterRedDuration = 1.2,
+    WinterBossOrbitDistance = 28,
     FarmRepathInterval = 0.35,
     FarmScanRadius = 1000,
     FarmDungeon = "Desert Temple (Legacy)",
     AutoDungeon = false,
     AutoStartDungeon = false,
+
+    OptimizeVFX = false,
+    OptimizeInvisibleMap = false,
+    OptimizeHidePlayers = false,
+    InfiniteZoomOut = false,
+    SelectedConfig = "Config 1",
+    AutoLoadConfig = false,
 
     Theme = "Chrome",
 }
@@ -173,6 +187,11 @@ local SettingKeyByTitle = {
     ["Chams"] = "ESPChams",
     ["Team Check"] = "ESPTeamCheck",
     ["Wall Check"] = "ESPWallCheck",
+    ["Safe Performance"] = "OptimizeVFX",
+    ["Extreme Invisible Map"] = "OptimizeInvisibleMap",
+    ["Hide Other Players"] = "OptimizeHidePlayers",
+    ["Infinite Zoom Out"] = "InfiniteZoomOut",
+    ["Auto Load Config"] = "AutoLoadConfig",
     ["Fly Speed"] = "FlySpeed",
     ["FTAL's Speed"] = "FTALSSpeed",
     ["Tween Speed"] = "TweenSpeed",
@@ -184,16 +203,17 @@ local SettingKeyByTitle = {
     ["NPC Run Distance"] = "WinterNPCAOIRange",
     ["NPC Attack AOI"] = "WinterAttackAOIRange",
     ["Red Dodge Duration"] = "WinterRedDuration",
+    ["Boss Orbit Distance"] = "WinterBossOrbitDistance",
     ["NPC Detection Range"] = "FarmScanRadius",
     ["Path Recompute"] = "FarmRepathInterval",
     ["ESP Max Distance"] = "ESPMaxDistance",
 }
 
-local function SaveSettings()
-    if type(writefile) ~= "function" then return end
+function Hub.SerializeSettings(includeConfigMeta)
     local data = {_configVersion = 1}
     for key,value in pairs(Hub.State) do
-        if key ~= "Open" and key ~= "WaitingForMenuKey" then
+        if key ~= "Open" and key ~= "WaitingForMenuKey"
+            and (includeConfigMeta or (key ~= "SelectedConfig" and key ~= "AutoLoadConfig")) then
             if type(value) == "boolean" or type(value) == "number" or type(value) == "string" then
                 data[key] = value
             elseif typeof(value) == "Color3" then
@@ -201,8 +221,35 @@ local function SaveSettings()
             end
         end
     end
+    return data
+end
+
+function Hub.ApplySerializedSettings(data,preserveConfigMeta)
+    if type(data) ~= "table" then return false end
+    local selectedConfig = Hub.State.SelectedConfig
+    local autoLoadConfig = Hub.State.AutoLoadConfig
+    for key,default in pairs(Hub.State) do
+        local saved = data[key]
+        if saved ~= nil and key ~= "Open" and key ~= "WaitingForMenuKey" then
+            if type(saved) == type(default)
+                and (type(default) == "boolean" or type(default) == "number" or type(default) == "string") then
+                Hub.State[key] = saved
+            elseif key == "ESPColor" and type(saved) == "table" and saved.r and saved.g and saved.b then
+                Hub.State[key] = Color3.new(saved.r,saved.g,saved.b)
+            end
+        end
+    end
+    if preserveConfigMeta then
+        Hub.State.SelectedConfig = selectedConfig
+        Hub.State.AutoLoadConfig = autoLoadConfig
+    end
+    return true
+end
+
+local function SaveSettings()
+    if type(writefile) ~= "function" then return end
     pcall(function()
-        writefile(SettingsFile,game:GetService("HttpService"):JSONEncode(data))
+        writefile(SettingsFile,game:GetService("HttpService"):JSONEncode(Hub.SerializeSettings(true)))
     end)
 end
 
@@ -212,16 +259,7 @@ local function LoadSettings()
         return game:GetService("HttpService"):JSONDecode(readfile(SettingsFile))
     end)
     if not ok or type(data) ~= "table" then return end
-    for key,default in pairs(Hub.State) do
-        local saved = data[key]
-        if saved ~= nil and key ~= "Open" and key ~= "WaitingForMenuKey" then
-            if type(saved) == type(default) and (type(default) == "boolean" or type(default) == "number" or type(default) == "string") then
-                Hub.State[key] = saved
-            elseif key == "ESPColor" and type(saved) == "table" and saved.r and saved.g and saved.b then
-                Hub.State[key] = Color3.new(saved.r,saved.g,saved.b)
-            end
-        end
-    end
+    Hub.ApplySerializedSettings(data,false)
     if data._configVersion == nil then
         Hub.State.FTALSSpeed = 19.82
         Hub.State.FarmScanRadius = 1000
@@ -229,7 +267,73 @@ local function LoadSettings()
     end
 end
 
+function Hub.SaveNamedConfig(name)
+    if type(writefile) ~= "function" then return false,"writefile unavailable" end
+    local ok,err = pcall(function()
+        local safeName = tostring(name or "Config 1"):gsub("[^%w_-]","_")
+        writefile(
+            "FTAL_"..safeName..".json",
+            game:GetService("HttpService"):JSONEncode(Hub.SerializeSettings(false))
+        )
+    end)
+    return ok,err
+end
+
+function Hub.LoadNamedConfigIntoState(name)
+    if type(isfile) ~= "function" or type(readfile) ~= "function" then
+        return false,"file functions unavailable"
+    end
+    local safeName = tostring(name or "Config 1"):gsub("[^%w_-]","_")
+    local path = "FTAL_"..safeName..".json"
+    if not isfile(path) then return false,"config has not been saved" end
+    local ok,data = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(readfile(path))
+    end)
+    if not ok or type(data) ~= "table" then return false,"config file is invalid" end
+    Hub.ApplySerializedSettings(data,true)
+    return true
+end
+
+function Hub.LoadConfigNames()
+    if type(isfile) == "function" and type(readfile) == "function"
+        and isfile("FTAL_ConfigNames.json") then
+        local ok,data = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(readfile("FTAL_ConfigNames.json"))
+        end)
+        if ok and type(data) == "table" then
+            for index = 1,20 do
+                local slot = "Config "..index
+                local savedName = data[slot]
+                Hub.ConfigNames[slot] = type(savedName) == "string" and savedName:sub(1,24) or slot
+            end
+            return
+        end
+    end
+    for index = 1,20 do
+        local slot = "Config "..index
+        Hub.ConfigNames[slot] = slot
+    end
+end
+
+function Hub.SaveConfigNames()
+    if type(writefile) ~= "function" then return false end
+    return pcall(function()
+        writefile(
+            "FTAL_ConfigNames.json",
+            game:GetService("HttpService"):JSONEncode(Hub.ConfigNames)
+        )
+    end)
+end
+
+function Hub.GetConfigDisplayName(slot)
+    return Hub.ConfigNames[slot] or slot
+end
+
 LoadSettings()
+Hub.LoadConfigNames()
+if Hub.State.AutoLoadConfig then
+    Hub.LoadNamedConfigIntoState(Hub.State.SelectedConfig)
+end
 
 local Themes = {
     Chrome = {
@@ -573,11 +677,19 @@ local function Toggle(page,title,description,default,callback)
         end
     end
 
-    Connect(b.MouseButton1Click,function()
-        state = not state
+    local function applyState(newState,suppressSave)
+        state = newState == true
         render()
         callback(state)
-        SaveSettings()
+        if not suppressSave then SaveSettings() end
+    end
+
+    if settingKey then
+        Hub.SettingControls[settingKey] = applyState
+    end
+
+    Connect(b.MouseButton1Click,function()
+        applyState(not state,false)
     end)
 
     render()
@@ -649,14 +761,14 @@ local function Slider(page,title,description,min,max,default,callback)
     local value = type(savedValue) == "number" and savedValue or default
     local sliding = false
 
-    local function setValue(v)
+    local function setValue(v,suppressSave)
         value = math.clamp(v,min,max)
         local alpha = (value-min)/(max-min)
         fill.Size = UDim2.new(alpha,0,1,0)
         knob.Position = UDim2.new(alpha,0,.5,0)
         valueLabel.Text = math.floor(value) == value and tostring(math.floor(value)) or string.format("%.2f",value)
         callback(value)
-        SaveSettings()
+        if not suppressSave then SaveSettings() end
     end
 
     local function updateFromX(x)
@@ -690,13 +802,20 @@ local function Slider(page,title,description,min,max,default,callback)
         end
     end)
 
-    setValue(default)
+    if settingKey then
+        Hub.SettingControls[settingKey] = setValue
+    end
+
+    -- Apply the value loaded from disk. Using `default` here previously
+    -- overwrote every saved slider as soon as its control was created.
+    setValue(value)
     return c
 end
 
 local Movement = CreatePage("Movement")
 local Visuals = CreatePage("Visuals")
 local AutoFarm = CreatePage("Auto Farm")
+CreatePage("Settings")
 
 local function CreateTab(name,icon)
     local b = Instance.new("TextButton")
@@ -718,6 +837,7 @@ end
 CreateTab("Movement","◆")
 CreateTab("Visuals","◎")
 CreateTab("Auto Farm","✦")
+CreateTab("Settings","⚙")
 
 local function ShowPage(name)
     for n,p in pairs(Pages) do
@@ -777,6 +897,7 @@ local FARM_CONFIG = {
     StuckTime = 1.2,
     ScanRadius = 250,
     AbilityCooldown = 0.35,
+    WinterBossAbilityCooldown = 0.12,
     RetreatDistance = 15,
     CombatHoldDistance = 18,
     WinterScanRadius = 1000,
@@ -1058,6 +1179,14 @@ local WinterRouteState = {
     Recovering = false,
 }
 
+local WinterBossState = {
+    SafePosition = nil,
+    LastHazardCount = 0,
+    HoldingSafe = false,
+    EventPending = false,
+    Engaged = false,
+}
+
 local FarmWorkerRunning = false
 local AutoDungeonWorkerRunning = false
 local AutoStartDungeonWorkerRunning = false
@@ -1086,6 +1215,9 @@ local FarmRouteParts = {}
 local FarmAOICircle
 local FarmNPCAOICircle
 local FarmNPCRunCircle
+local FarmAOIRingSegments = {}
+local FarmNPCAOIRingSegments = {}
+local FarmNPCRunRingSegments = {}
 local FarmCombatTarget
 local FarmCombatGroup = {}
 local FarmCombatRangeActive = false
@@ -1718,14 +1850,17 @@ local function ClearFarmVisuals()
         FarmAOICircle:Destroy()
         FarmAOICircle = nil
     end
+    table.clear(FarmAOIRingSegments)
     if FarmNPCAOICircle then
         FarmNPCAOICircle:Destroy()
         FarmNPCAOICircle = nil
     end
+    table.clear(FarmNPCAOIRingSegments)
     if FarmNPCRunCircle then
         FarmNPCRunCircle:Destroy()
         FarmNPCRunCircle = nil
     end
+    table.clear(FarmNPCRunRingSegments)
     FARM_CONFIG.AOIRoot = nil
     FarmVisualPath = nil
     FarmVisualTarget = nil
@@ -1748,99 +1883,107 @@ local function GetFarmVisualFolder()
     return FarmVisualFolder
 end
 
+local AOI_RING_SEGMENT_COUNT = 40
+
+local function CreateFarmAOIRing(name)
+    local folder = Instance.new("Folder")
+    folder.Name = name
+    folder.Parent = GetFarmVisualFolder()
+    local segments = {}
+    for index = 1,AOI_RING_SEGMENT_COUNT do
+        local segment = Instance.new("Part")
+        segment.Name = "Outline"..index
+        segment.Anchored = true
+        segment.CanCollide = false
+        segment.CanTouch = false
+        segment.CanQuery = false
+        segment.CastShadow = false
+        segment.Material = Enum.Material.Neon
+        segment.Transparency = 0.08
+        segment.Parent = folder
+        segments[index] = segment
+    end
+    return folder,segments
+end
+
+local function UpdateFarmAOIRing(segments,root,radius,heightOffset,color,visible)
+    if not root then return end
+    local center = root.Position+Vector3.new(0,heightOffset,0)
+    local arcLength = (2*math.pi*radius/AOI_RING_SEGMENT_COUNT)*1.08
+    for index,segment in ipairs(segments) do
+        if segment and segment.Parent then
+            local angle = (index-1)/AOI_RING_SEGMENT_COUNT*math.pi*2
+            local radial = Vector3.new(math.cos(angle),0,math.sin(angle))
+            local tangent = Vector3.new(-radial.Z,0,radial.X)
+            local position = center+radial*radius
+            segment.Size = Vector3.new(0.22,0.12,arcLength)
+            segment.CFrame = CFrame.lookAt(position,position+tangent)
+            segment.Color = color
+            segment.Transparency = visible and 0.08 or 1
+        end
+    end
+end
+
 local function SetFarmAOI(root,state)
     if not root or not root.Parent then return end
     FARM_CONFIG.AOIRoot = root
     FARM_CONFIG.AOIState = state
     if state ~= "HOLD" then FARM_CONFIG.WinterYellowMoveDirection = nil end
+
     if not FarmAOICircle or not FarmAOICircle.Parent then
-        FarmAOICircle = Instance.new("Part")
-        FarmAOICircle.Name = "AIStateCircle"
-        FarmAOICircle.Shape = Enum.PartType.Cylinder
-        FarmAOICircle.Anchored = true
-        FarmAOICircle.CanCollide = false
-        FarmAOICircle.CanTouch = false
-        FarmAOICircle.CanQuery = false
-        FarmAOICircle.CastShadow = false
-        FarmAOICircle.Material = Enum.Material.Neon
-        FarmAOICircle.Transparency = 0.58
-        FarmAOICircle.Parent = GetFarmVisualFolder()
+        FarmAOICircle,FarmAOIRingSegments = CreateFarmAOIRing("AIStateCircleOutline")
     end
     if Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
         and (not FarmNPCAOICircle or not FarmNPCAOICircle.Parent) then
-        FarmNPCAOICircle = Instance.new("Part")
-        FarmNPCAOICircle.Name = "YellowNPCAOICircle"
-        FarmNPCAOICircle.Shape = Enum.PartType.Cylinder
-        FarmNPCAOICircle.Anchored = true
-        FarmNPCAOICircle.CanCollide = false
-        FarmNPCAOICircle.CanTouch = false
-        FarmNPCAOICircle.CanQuery = false
-        FarmNPCAOICircle.CastShadow = false
-        FarmNPCAOICircle.Material = Enum.Material.Neon
-        FarmNPCAOICircle.Color = Color3.fromRGB(255,215,45)
-        FarmNPCAOICircle.Transparency = 0.72
-        FarmNPCAOICircle.Parent = GetFarmVisualFolder()
+        FarmNPCAOICircle,FarmNPCAOIRingSegments = CreateFarmAOIRing("YellowNPCAOIOutline")
     end
     if Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
         and (not FarmNPCRunCircle or not FarmNPCRunCircle.Parent) then
-        FarmNPCRunCircle = Instance.new("Part")
-        FarmNPCRunCircle.Name = "OrangeNPCRunCircle"
-        FarmNPCRunCircle.Shape = Enum.PartType.Cylinder
-        FarmNPCRunCircle.Anchored = true
-        FarmNPCRunCircle.CanCollide = false
-        FarmNPCRunCircle.CanTouch = false
-        FarmNPCRunCircle.CanQuery = false
-        FarmNPCRunCircle.CastShadow = false
-        FarmNPCRunCircle.Material = Enum.Material.Neon
-        FarmNPCRunCircle.Color = Color3.fromRGB(255,135,40)
-        FarmNPCRunCircle.Transparency = 0.68
-        FarmNPCRunCircle.Parent = GetFarmVisualFolder()
+        FarmNPCRunCircle,FarmNPCRunRingSegments = CreateFarmAOIRing("OrangeNPCRunOutline")
     end
 
-    -- This is the local decision AOI, not the full 1,000-stud NPC scan.
-    -- Keeping it at telegraph scale makes it useful without covering the map.
     local radius = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
         and math.max(20,Hub.State.WinterAOIRange or 40)
         or math.max(5,Hub.State.FarmStopDistance+2)
-    FarmAOICircle.Size = Vector3.new(0.10,radius*2,radius*2)
-    FarmAOICircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.8,0))*CFrame.Angles(0,0,math.rad(90))
-    if state == "DODGE" then
-        FarmAOICircle.Color = Color3.fromRGB(255,55,55)
-    elseif state == "HOLD" then
-        FarmAOICircle.Color = Color3.fromRGB(255,215,45)
-    else
-        FarmAOICircle.Color = Color3.fromRGB(55,255,105)
-    end
+    local color = state == "DODGE" and Color3.fromRGB(255,55,55)
+        or state == "HOLD" and Color3.fromRGB(255,215,45)
+        or Color3.fromRGB(55,255,105)
+    UpdateFarmAOIRing(FarmAOIRingSegments,root,radius,-2.80,color,true)
 end
 
--- Keep the AOI attached on every rendered frame. AI decisions can stay at
--- their efficient update rate without making the circle visibly lag behind.
+-- Keep outline-only AOI rings attached every rendered frame. Their centers
+-- contain no geometry, so the map and enemies remain fully visible.
 table.insert(Hub.Connections,RunService.RenderStepped:Connect(function()
     local root = FARM_CONFIG.AOIRoot
     if FarmAOICircle and FarmAOICircle.Parent and root and root.Parent then
-        local radius = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+        local winterMode = Hub.State.FarmDungeon == "Winter Outpost (Legacy)"
+        local radius = winterMode
             and math.max(20,Hub.State.WinterAOIRange or 40)
             or math.max(5,Hub.State.FarmStopDistance+2)
-        FarmAOICircle.Size = Vector3.new(0.10,radius*2,radius*2)
-        FarmAOICircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.8,0))*CFrame.Angles(0,0,math.rad(90))
-        if FarmNPCAOICircle and FarmNPCAOICircle.Parent then
-            local runRadius = math.max(4,Hub.State.WinterNPCAOIRange or 18)
-            local npcRadius = math.max(runRadius+2,Hub.State.WinterAttackAOIRange or 32)
-            FarmNPCAOICircle.Size = Vector3.new(0.12,npcRadius*2,npcRadius*2)
-            FarmNPCAOICircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.72,0))*CFrame.Angles(0,0,math.rad(90))
-            FarmNPCAOICircle.Transparency = Hub.State.FarmDungeon == "Winter Outpost (Legacy)" and 0.72 or 1
-            if FarmNPCRunCircle and FarmNPCRunCircle.Parent then
-                FarmNPCRunCircle.Size = Vector3.new(0.14,runRadius*2,runRadius*2)
-                FarmNPCRunCircle.CFrame = CFrame.new(root.Position-Vector3.new(0,2.64,0))*CFrame.Angles(0,0,math.rad(90))
-                FarmNPCRunCircle.Transparency = Hub.State.FarmDungeon == "Winter Outpost (Legacy)" and 0.68 or 1
-            end
-        end
+        local state = FARM_CONFIG.AOIState
+        local color = state == "DODGE" and Color3.fromRGB(255,55,55)
+            or state == "HOLD" and Color3.fromRGB(255,215,45)
+            or Color3.fromRGB(55,255,105)
+        UpdateFarmAOIRing(FarmAOIRingSegments,root,radius,-2.80,color,true)
+
+        local runRadius = math.max(4,Hub.State.WinterNPCAOIRange or 18)
+        local npcRadius = math.max(runRadius+2,Hub.State.WinterAttackAOIRange or 32)
+        UpdateFarmAOIRing(
+            FarmNPCAOIRingSegments,root,npcRadius,-2.72,
+            Color3.fromRGB(255,215,45),winterMode
+        )
+        UpdateFarmAOIRing(
+            FarmNPCRunRingSegments,root,runRadius,-2.64,
+            Color3.fromRGB(255,135,40),winterMode
+        )
 
         local humanoid = root.Parent and root.Parent:FindFirstChildOfClass("Humanoid")
         if humanoid and humanoid.Health > 0 then
-            if FARM_CONFIG.AOIState == "DODGE" and FarmCombatMoveDirection then
+            if state == "DODGE" and FarmCombatMoveDirection then
                 humanoid:Move(FarmCombatMoveDirection,false)
-            elseif FARM_CONFIG.AOIState == "HOLD" and FARM_CONFIG.WinterYellowMoveDirection then
+            elseif state == "ORBIT" and FarmCombatMoveDirection then
+                humanoid:Move(FarmCombatMoveDirection,false)
+            elseif state == "HOLD" and FARM_CONFIG.WinterYellowMoveDirection then
                 humanoid:Move(FARM_CONFIG.WinterYellowMoveDirection,false)
             end
         end
@@ -2246,10 +2389,10 @@ local function TapAbilityKey(key)
     return pressed
 end
 
-local function UseCombatAbilities(aggro)
+local function UseCombatAbilities(aggro,cooldown)
     if not aggro then return end
     local now = os.clock()
-    if now-FarmLastAbilityAt < FARM_CONFIG.AbilityCooldown then return end
+    if now-FarmLastAbilityAt < (cooldown or FARM_CONFIG.AbilityCooldown) then return end
     FarmLastAbilityAt = now
     TapAbilityKey(FarmNextAbility)
     FarmNextAbility = FarmNextAbility == "Q" and "E" or "Q"
@@ -3044,12 +3187,387 @@ local function FollowWinterFixedRoute(root,humanoid)
     return true,false
 end
 
+local WINTER_BOSS_TELEGRAPHS = {
+    hitindicatoriceaoe = "ICE_AOE_WARNING",
+    iceaoe = "ICE_AOE_ACTIVE",
+    icebeamindicator = "ICE_BEAM_WARNING",
+    icebeam = "ICE_BEAM_ACTIVE",
+    minionindicator = "MINION_WARNING",
+}
+
+local function FindWinterBoss()
+    for model,enemyHumanoid in pairs(NPCCandidates) do
+        if model and model.Parent and enemyHumanoid and enemyHumanoid.Health > 0
+            and string.lower(model.Name or "") == "ice elemental" then
+            local bossRoot = GetTaggedRoot(model)
+            if bossRoot then return model,bossRoot,enemyHumanoid end
+        end
+    end
+    return nil
+end
+
+local function GetWinterBossHazards()
+    local hazards = {}
+    for _,object in ipairs(workspace:GetChildren()) do
+        local kind = WINTER_BOSS_TELEGRAPHS[string.lower(object.Name or "")]
+        if kind and object:IsA("Model") then
+            if kind == "ICE_BEAM_WARNING" or kind == "ICE_BEAM_ACTIVE" then
+                local hitBox = object:FindFirstChild("hitBox",true)
+                if hitBox and hitBox:IsA("BasePart") then
+                    table.insert(hazards,{
+                        shape="BOX",
+                        kind=kind,
+                        instance=object,
+                        cframe=hitBox.CFrame,
+                        size=hitBox.Size,
+                        margin=kind == "ICE_BEAM_WARNING" and 3.6 or 3.0,
+                    })
+                end
+            else
+                local ok,boxCFrame,boxSize = pcall(function()
+                    return object:GetBoundingBox()
+                end)
+                if ok then
+                    local baseRadius = math.max(boxSize.X,boxSize.Z)*0.5
+                    local margin = kind == "MINION_WARNING" and 2.5 or 3.0
+                    table.insert(hazards,{
+                        shape="CIRCLE",
+                        kind=kind,
+                        instance=object,
+                        center=boxCFrame.Position,
+                        radius=baseRadius+margin,
+                    })
+                end
+            end
+        end
+    end
+    return hazards
+end
+
+local function WinterBossHazardClearance(position,hazard)
+    if hazard.shape == "CIRCLE" then
+        local delta = Vector3.new(
+            position.X-hazard.center.X,
+            0,
+            position.Z-hazard.center.Z
+        )
+        return delta.Magnitude-hazard.radius
+    end
+
+    local sample = Vector3.new(position.X,hazard.cframe.Position.Y,position.Z)
+    local localPoint = hazard.cframe:PointToObjectSpace(sample)
+    local halfX = hazard.size.X*0.5+hazard.margin
+    local halfZ = hazard.size.Z*0.5+hazard.margin
+    local outsideX = math.abs(localPoint.X)-halfX
+    local outsideZ = math.abs(localPoint.Z)-halfZ
+    if outsideX <= 0 and outsideZ <= 0 then
+        return math.max(outsideX,outsideZ)
+    end
+    return math.sqrt(math.max(0,outsideX)^2+math.max(0,outsideZ)^2)
+end
+
+local function WinterBossPointClearance(position,hazards)
+    local clearance = math.huge
+    for _,hazard in ipairs(hazards) do
+        clearance = math.min(clearance,WinterBossHazardClearance(position,hazard))
+    end
+    return clearance
+end
+
+local function WinterBossPointReachable(root,position,hazards)
+    local exclusions = {LocalPlayer.Character}
+    for _,hazard in ipairs(hazards) do
+        table.insert(exclusions,hazard.instance)
+    end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = exclusions
+
+    local travel = Vector3.new(position.X-root.Position.X,0,position.Z-root.Position.Z)
+    local wallHit = workspace:Raycast(root.Position+Vector3.new(0,2.2,0),travel,params)
+    if wallHit and wallHit.Distance < math.max(0,travel.Magnitude-1.2) then
+        return false
+    end
+    local floorHit = workspace:Raycast(
+        position+Vector3.new(0,6,0),
+        Vector3.new(0,-15,0),
+        params
+    )
+    return floorHit ~= nil
+end
+
+local function GetWinterBossDirections(root)
+    local forward = Vector3.new(root.CFrame.LookVector.X,0,root.CFrame.LookVector.Z)
+    if forward.Magnitude < 0.05 then forward = Vector3.new(0,0,-1) end
+    forward = forward.Unit
+    local right = Vector3.new(-forward.Z,0,forward.X)
+    return {
+        forward,
+        (forward+right).Unit,
+        right,
+        (-forward+right).Unit,
+        -forward,
+        (-forward-right).Unit,
+        -right,
+        (forward-right).Unit,
+    }
+end
+
+local function FindClosestWinterBossSafePosition(root,hazards)
+    local currentClearance = WinterBossPointClearance(root.Position,hazards)
+    if currentClearance >= 1.5 then
+        return root.Position,currentClearance
+    end
+
+    local directions = GetWinterBossDirections(root)
+    for distance = 2,44,2 do
+        local bestPosition,bestClearance
+        for _,direction in ipairs(directions) do
+            local position = root.Position+direction*distance
+            local clearance = WinterBossPointClearance(position,hazards)
+            if clearance >= 1.5
+                and WinterBossPointReachable(root,position,hazards)
+                and (not bestClearance or clearance > bestClearance) then
+                bestPosition,bestClearance = position,clearance
+            end
+        end
+        if bestPosition then
+            return bestPosition,bestClearance
+        end
+    end
+
+    -- Emergency fallback: choose the reachable direction with the greatest
+    -- clearance even if overlapping telegraphs temporarily cover every sample.
+    local bestPosition,bestClearance
+    for _,distance in ipairs({12,20,28,36,44}) do
+        for _,direction in ipairs(directions) do
+            local position = root.Position+direction*distance
+            local clearance = WinterBossPointClearance(position,hazards)
+            if WinterBossPointReachable(root,position,hazards)
+                and (not bestClearance or clearance > bestClearance) then
+                bestPosition,bestClearance = position,clearance
+            end
+        end
+    end
+    return bestPosition,bestClearance
+end
+
+local function WinterBossMovementKeys(root,direction)
+    local localDirection = root.CFrame:VectorToObjectSpace(direction)
+    local keys = {}
+    if localDirection.Z < -0.25 then
+        table.insert(keys,"w")
+    elseif localDirection.Z > 0.25 then
+        table.insert(keys,"s")
+    end
+    if localDirection.X < -0.25 then
+        table.insert(keys,"a")
+    elseif localDirection.X > 0.25 then
+        table.insert(keys,"d")
+    end
+    return keys
+end
+
+local function StopAtWinterBossSafePosition(root,humanoid,bossRoot,hazards)
+    ReleaseFarmKeys()
+    humanoid:Move(Vector3.zero,false)
+    humanoid:MoveTo(root.Position)
+    WinterBossState.SafePosition = root.Position
+    WinterBossState.HoldingSafe = true
+    FarmContinuousMove = false
+    FarmCombatMoveDirection = nil
+    FarmState = "WINTER BOSS SAFE"
+    if bossRoot then FaceCombatTarget(root,humanoid,bossRoot) end
+    SetFarmAOI(root,"DODGE")
+    SetFarmStatus(string.format(
+        "WINTER BOSS: SAFE • stopped • Q/E spam • watching %d telegraphs",
+        #hazards
+    ))
+end
+
+local function StepWinterBossTelegraphs(root,humanoid)
+    local inBossRoom = WinterRouteState.Room >= 8 or root.Position.Z <= -1355
+    if not inBossRoom then return false end
+    local hazards = GetWinterBossHazards()
+    local bossModel,bossRoot = FindWinterBoss()
+    if #hazards == 0 then
+        -- Circle the boss continuously between attacks. Telegraphs interrupt
+        -- this movement immediately; after the dodge, orbiting resumes from the
+        -- new safe location instead of returning to an old route position.
+        if bossRoot then
+            WinterBossState.Engaged = true
+            humanoid.AutoRotate = false
+            FarmCombatTarget = bossModel
+            FaceCombatTarget(root,humanoid,bossRoot)
+
+            local targetRadius = math.max(8,Hub.State.WinterBossOrbitDistance or 28)
+            local offset = Vector3.new(
+                root.Position.X-bossRoot.Position.X,
+                0,
+                root.Position.Z-bossRoot.Position.Z
+            )
+            local distance = offset.Magnitude
+            local outward
+            if distance > 0.05 then
+                outward = offset.Unit
+            else
+                local bossForward = Vector3.new(bossRoot.CFrame.LookVector.X,0,bossRoot.CFrame.LookVector.Z)
+                outward = bossForward.Magnitude > 0.05 and -bossForward.Unit or Vector3.new(0,0,1)
+            end
+
+            local tangent = Vector3.new(-outward.Z,0,outward.X)*FarmStrafeSign
+            local radialCorrection = math.clamp((targetRadius-distance)/6,-0.9,0.9)
+            local combined = tangent+outward*radialCorrection
+            local direction = combined.Magnitude > 0.05 and combined.Unit or tangent
+            local testPosition = root.Position+direction*7
+
+            if not WinterBossPointReachable(root,testPosition,{}) then
+                FarmStrafeSign = -FarmStrafeSign
+                tangent = Vector3.new(-outward.Z,0,outward.X)*FarmStrafeSign
+                combined = tangent+outward*radialCorrection
+                direction = combined.Magnitude > 0.05 and combined.Unit or tangent
+            end
+
+            local keys = WinterBossMovementKeys(root,direction)
+            SetFarmHeldKeys(keys)
+            humanoid:Move(direction,false)
+            FarmContinuousMove = true
+            FarmCombatMoveDirection = direction
+            FARM_CONFIG.WinterYellowMoveDirection = nil
+            WinterBossState.SafePosition = root.Position
+            WinterBossState.HoldingSafe = false
+            WinterBossState.LastHazardCount = 0
+            FarmState = "WINTER BOSS ORBIT"
+            UseCombatAbilities(true,FARM_CONFIG.WinterBossAbilityCooldown)
+            SetFarmAOI(root,"ORBIT")
+            SetFarmStatus(string.format(
+                "WINTER BOSS: ORBITING • %.1f / %.1f studs • %s • Q/E spam",
+                distance,
+                targetRadius,
+                #keys > 0 and string.upper(table.concat(keys,"+")) or "DIRECT"
+            ))
+            return true
+        end
+        if FarmState == "WINTER BOSS DODGE" or FarmState == "WINTER BOSS SAFE"
+            or FarmState == "WINTER BOSS HOLD" or FarmState == "WINTER BOSS ORBIT" then
+            ReleaseFarmKeys()
+            humanoid:Move(Vector3.zero,false)
+            WinterBossState.SafePosition = nil
+            WinterBossState.HoldingSafe = false
+            WinterBossState.LastHazardCount = 0
+            FarmContinuousMove = false
+            FarmCombatMoveDirection = nil
+            FarmState = "WINTER BOSS READY"
+        end
+        WinterBossState.Engaged = false
+        return false
+    end
+
+    WinterBossState.Engaged = true
+    if FarmState ~= "WINTER BOSS DODGE" and FarmState ~= "WINTER BOSS SAFE" then
+        StopFarmPath(humanoid)
+    end
+    FarmCombatTarget = bossModel
+    humanoid.AutoRotate = false
+    if bossRoot then FaceCombatTarget(root,humanoid,bossRoot) end
+    -- Q/E continues independently while movement dodges or holds safe.
+    UseCombatAbilities(true,FARM_CONFIG.WinterBossAbilityCooldown)
+
+    local currentClearance = WinterBossPointClearance(root.Position,hazards)
+    local target = WinterBossState.SafePosition
+    if target and WinterBossPointClearance(target,hazards) < 1.5 then
+        target = nil
+    end
+    if not target or #hazards ~= WinterBossState.LastHazardCount then
+        target = FindClosestWinterBossSafePosition(root,hazards)
+        WinterBossState.SafePosition = target
+        WinterBossState.LastHazardCount = #hazards
+        WinterBossState.HoldingSafe = false
+    end
+
+    if currentClearance >= 1.5 and (not target or (root.Position-target).Magnitude <= 1.6) then
+        StopAtWinterBossSafePosition(root,humanoid,bossRoot,hazards)
+        return true
+    end
+
+    if not target then
+        -- No valid floor sample was available. Stop instead of blindly walking
+        -- into a wall or off the arena while waiting for the next recomputation.
+        StopAtWinterBossSafePosition(root,humanoid,bossRoot,hazards)
+        SetFarmStatus("WINTER BOSS: no reachable sample • stopped and rescanning")
+        WinterBossState.SafePosition = nil
+        return true
+    end
+
+    local travel = Vector3.new(target.X-root.Position.X,0,target.Z-root.Position.Z)
+    if travel.Magnitude <= 1.6 then
+        StopAtWinterBossSafePosition(root,humanoid,bossRoot,hazards)
+        return true
+    end
+
+    local direction = travel.Unit
+    local keys = WinterBossMovementKeys(root,direction)
+    SetFarmHeldKeys(keys)
+    humanoid:Move(direction,false)
+    FarmContinuousMove = true
+    FarmCombatMoveDirection = direction
+    FarmState = "WINTER BOSS DODGE"
+    WinterBossState.HoldingSafe = false
+    SetFarmAOI(root,"DODGE")
+    SetFarmStatus(string.format(
+        "WINTER BOSS: DODGING • %s • Q/E spam • %.1f studs • %d telegraphs",
+        #keys > 0 and string.upper(table.concat(keys,"+")) or "DIRECT",
+        travel.Magnitude,
+        #hazards
+    ))
+    return true
+end
+
+-- Wake the boss controller from the Workspace creation event. A 0.015-second
+-- coalescing window captures attack bursts without running once for every one
+-- of the 60 AOE indicators.
+table.insert(Hub.Connections,workspace.ChildAdded:Connect(function(object)
+    if not Hub.State.AutoFarm or Hub.State.FarmDungeon ~= "Winter Outpost (Legacy)"
+        or Hub.Destroyed or not object:IsA("Model")
+        or not WINTER_BOSS_TELEGRAPHS[string.lower(object.Name or "")] then
+        return
+    end
+    WinterBossState.SafePosition = nil
+    WinterBossState.LastHazardCount = -1
+    if WinterBossState.EventPending then return end
+    WinterBossState.EventPending = true
+    task.delay(0.015,function()
+        WinterBossState.EventPending = false
+        if not Hub.State.AutoFarm or Hub.Destroyed then return end
+        local root,humanoid = GetFarmRoot()
+        if root and humanoid and humanoid.Health > 0 then
+            pcall(StepWinterBossTelegraphs,root,humanoid)
+        end
+    end)
+end))
+
 local function StepWinterOutpost()
     SetWinterNoclip(false)
     local root,humanoid = GetFarmRoot()
     if not root or not humanoid or humanoid.Health <= 0 then
         StopFarmPath(humanoid)
         SetFarmStatus("Winter route waiting for your character...")
+        return
+    end
+
+    -- A freshly executed test inside the fixed boss room can recover directly
+    -- onto Room 8 instead of trying to walk back to Room 1.
+    if root.Position.Z <= -1355 and WinterRouteState.Room < 8 then
+        WinterRouteState.Room = 8
+        WinterRouteState.Index = 1
+        WinterRouteState.Character = nil
+        WinterRouteState.Recovering = false
+    end
+
+    -- Room 8 has a dedicated multi-telegraph controller. Warning indicators
+    -- are processed before wizard logic, NPC selection, or route movement.
+    if StepWinterBossTelegraphs(root,humanoid) then
+        if Hub.State.AutoPickup then TryAutoPickup(root,os.clock()) end
         return
     end
 
@@ -3166,7 +3684,11 @@ local function StepWinterOutpost()
     end
     humanoid.AutoRotate = false
     FaceCombatTarget(root,humanoid,target)
-    UseCombatAbilities(true)
+    local bossFight = WinterRouteState.Room >= 8 or root.Position.Z <= -1355
+    UseCombatAbilities(
+        true,
+        bossFight and FARM_CONFIG.WinterBossAbilityCooldown or nil
+    )
     local runRange = Hub.State.WinterNPCAOIRange or 18
     if targetDistance <= runRange then
         local retreatDirection = SelectWinterRetreatDirection(root,target,group)
@@ -3388,7 +3910,7 @@ DungeonMenu.Parent = DungeonCard
 Round(DungeonMenu,5)
 Stroke(DungeonMenu,Theme.Border)
 
-local function SelectDungeon(name)
+local function SelectDungeon(name,suppressSave)
     for index,value in ipairs(LegacyDungeons) do
         if value == name then DungeonIndex = index break end
     end
@@ -3399,15 +3921,19 @@ local function SelectDungeon(name)
         WinterRouteState.Character = nil
         WinterRouteState.Recovering = false
         table.clear(WinterRouteState.LockedGroup)
+        WinterBossState.Engaged = false
+        WinterBossState.SafePosition = nil
     end
     DungeonButton.Text = name
     DungeonMenu.Visible = false
     FarmNextRepathAt = 0
-    if name ~= "Desert Temple (Legacy)" and Hub.State.AutoDungeon then
-        Hub.State.AutoDungeon = false
-        AutoDungeonWorkerRunning = false
+    if not suppressSave then SaveSettings() end
+end
+
+Hub.SettingControls.FarmDungeon = function(value,suppressSave)
+    if table.find(LegacyDungeons,value) then
+        SelectDungeon(value,suppressSave)
     end
-    SaveSettings()
 end
 
 for index,name in ipairs(LegacyDungeons) do
@@ -3434,16 +3960,14 @@ Toggle(AutoFarm,"Auto Dungeon","Create/start the selected Legacy dungeon from th
     Hub.State.AutoDungeon = enabled
     if enabled then
         if not IsAutoDungeonPlace() then
-            Hub.State.AutoDungeon = false
-            SetFarmStatus("Auto Dungeon: unavailable in this place.")
+            SetFarmStatus("Auto Dungeon: saved — waiting for the lobby place.")
             return
         end
         if Hub.State.FarmDungeon == "Desert Temple (Legacy)" then
             SetFarmStatus("Auto Dungeon: scanning lobby controls...")
             RunAutoDungeonWorker()
         else
-            Hub.State.AutoDungeon = false
-            SetFarmStatus("Auto Dungeon: selected dungeon is not implemented.")
+            SetFarmStatus("Auto Dungeon: saved — selected dungeon is not implemented yet.")
         end
     else
         SetFarmStatus("Auto Dungeon is off.")
@@ -3453,8 +3977,7 @@ Toggle(AutoFarm,"Auto Start Dungeon","Universal Start button clicker for any dun
     Hub.State.AutoStartDungeon = enabled
     if enabled then
         if not IsAutoStartPlace() then
-            Hub.State.AutoStartDungeon = false
-            SetFarmStatus("Auto Start: unavailable in this place.")
+            SetFarmStatus("Auto Start: saved — waiting for a supported dungeon place.")
         elseif Hub.State.AutoDungeon then
             SetFarmStatus("Auto Start: Auto Dungeon already controls Start.")
         else
@@ -3480,6 +4003,8 @@ Toggle(AutoFarm,"Auto Farm Pathing","Walk to the nearest living NPC around obsta
             WinterRouteState.Character = nil
             WinterRouteState.Recovering = false
             table.clear(WinterRouteState.LockedGroup)
+            WinterBossState.Engaged = false
+            WinterBossState.SafePosition = nil
         end
         RunFarmWorker()
     else
@@ -3504,6 +4029,9 @@ Slider(AutoFarm,"NPC Attack AOI","Stop on the route, face NPCs, and use Q/E insi
 end)
 Slider(AutoFarm,"Red Dodge Duration","How long red mode holds A or D.",0.1,1.2,1.2,function(value)
     Hub.State.WinterRedDuration = math.floor(value*100)/100
+end)
+Slider(AutoFarm,"Boss Orbit Distance","Room 8 distance maintained while circling the Ice Elemental.",8,70,28,function(value)
+    Hub.State.WinterBossOrbitDistance = math.floor(value)
 end)
 Slider(AutoFarm,"NPC Detection Range","Scan this many studs for living NPCs.",50,1500,1000,function(value)
     Hub.State.FarmScanRadius = math.floor(value)
@@ -4044,6 +4572,570 @@ end)
 Slider(Visuals,"ESP Max Distance","Maximum ESP distance.",100,5000,1500,function(v)
     Hub.State.ESPMaxDistance = math.floor(v)
 end)
+
+--============================================================
+-- SETTINGS / OPTIMIZATION / CONFIGS
+--============================================================
+
+do
+local Settings = Pages.Settings
+local Lighting = game:GetService("Lighting")
+local VFXOriginal = setmetatable({},{__mode="k"})
+local MapOriginal = setmetatable({},{__mode="k"})
+local PlayerOriginal = setmetatable({},{__mode="k"})
+local OptimizationBaseplate
+local OriginalCameraMaxZoom = LocalPlayer.CameraMaxZoomDistance
+
+local function RememberAndSet(storage,object,property,value)
+    if not object then return end
+    local saved = storage[object]
+    if not saved then
+        saved = {}
+        storage[object] = saved
+    end
+    if saved[property] == nil then
+        local ok,current = pcall(function() return object[property] end)
+        if not ok then return end
+        saved[property] = current
+    end
+    pcall(function() object[property] = value end)
+end
+
+local function RestoreOptimizationStorage(storage)
+    for object,properties in pairs(storage) do
+        if object and object.Parent then
+            for property,value in pairs(properties) do
+                pcall(function() object[property] = value end)
+            end
+        end
+        storage[object] = nil
+    end
+end
+
+local function IsCharacterPart(part)
+    local model = part:FindFirstAncestorOfClass("Model")
+    return model and model:FindFirstChildWhichIsA("Humanoid",true) ~= nil
+end
+
+local function KeepMapPartVisible(part)
+    if part.Name == "FTAL_OptimizationBaseplate" then return true end
+    if IsCharacterPart(part) then return true end
+    if FarmVisualFolder and part:IsDescendantOf(FarmVisualFolder) then return true end
+    local name = string.lower(part.Name or "")
+    local parentName = string.lower(part.Parent and part.Parent.Name or "")
+    for _,word in ipairs({"drop","loot","item","coin","chest","pickup"}) do
+        if string.find(name,word,1,true) or string.find(parentName,word,1,true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function EnsureOptimizationBaseplate()
+    if OptimizationBaseplate and OptimizationBaseplate.Parent then
+        return OptimizationBaseplate
+    end
+    OptimizationBaseplate = Instance.new("Part")
+    OptimizationBaseplate.Name = "FTAL_OptimizationBaseplate"
+    OptimizationBaseplate.Anchored = true
+    OptimizationBaseplate.CanCollide = false
+    OptimizationBaseplate.CanTouch = false
+    OptimizationBaseplate.CanQuery = false
+    OptimizationBaseplate.CastShadow = false
+    OptimizationBaseplate.Material = Enum.Material.SmoothPlastic
+    OptimizationBaseplate.Color = Color3.fromRGB(42,46,54)
+    OptimizationBaseplate.Transparency = 0
+    OptimizationBaseplate.Size = Vector3.new(2048,0.2,2048)
+    OptimizationBaseplate.Parent = workspace
+    return OptimizationBaseplate
+end
+
+local function UpdateOptimizationBaseplate()
+    if not Hub.State.OptimizeInvisibleMap then return end
+    local character = LocalPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local plate = EnsureOptimizationBaseplate()
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {character,plate,FarmVisualFolder}
+    local floorHit = workspace:Raycast(
+        root.Position+Vector3.new(0,4,0),
+        Vector3.new(0,-80,0),
+        params
+    )
+    local floorY = floorHit and floorHit.Position.Y or root.Position.Y-3
+    plate.Position = Vector3.new(root.Position.X,floorY-0.32,root.Position.Z)
+end
+
+local function OptimizeVFXObject(object)
+    if object:IsA("ParticleEmitter") or object:IsA("Trail") or object:IsA("Beam")
+        or object:IsA("Smoke") or object:IsA("Fire") or object:IsA("Sparkles")
+        or object:IsA("PointLight") or object:IsA("SpotLight") or object:IsA("SurfaceLight")
+        or object:IsA("PostEffect") then
+        RememberAndSet(VFXOriginal,object,"Enabled",false)
+    elseif object:IsA("Decal") or object:IsA("Texture") then
+        local parentPart = object.Parent
+        if not (parentPart and parentPart:IsA("BasePart") and IsCharacterPart(parentPart)) then
+            RememberAndSet(VFXOriginal,object,"Transparency",1)
+        end
+    elseif object:IsA("Explosion") then
+        RememberAndSet(VFXOriginal,object,"Visible",false)
+    elseif object:IsA("BasePart") then
+        RememberAndSet(VFXOriginal,object,"CastShadow",false)
+    end
+end
+
+local function OptimizeMapObject(object)
+    if object:IsA("BasePart") and not KeepMapPartVisible(object) then
+        -- LocalTransparencyModifier changes only this client's rendering. The
+        -- part remains in Workspace with its original collision and raycasts.
+        RememberAndSet(MapOriginal,object,"LocalTransparencyModifier",1)
+    end
+end
+
+local function OptimizePlayerCharacter(character)
+    if not character or character == LocalPlayer.Character then return end
+    for _,object in ipairs(character:GetDescendants()) do
+        if object:IsA("BasePart") then
+            RememberAndSet(PlayerOriginal,object,"LocalTransparencyModifier",1)
+        elseif object:IsA("Decal") or object:IsA("Texture") then
+            RememberAndSet(PlayerOriginal,object,"Transparency",1)
+        end
+    end
+end
+
+local function ApplyOptimization()
+    if Hub.State.OptimizeVFX then
+        RememberAndSet(VFXOriginal,Lighting,"GlobalShadows",false)
+        for _,object in ipairs(Lighting:GetDescendants()) do OptimizeVFXObject(object) end
+        for _,object in ipairs(workspace:GetDescendants()) do OptimizeVFXObject(object) end
+    else
+        RestoreOptimizationStorage(VFXOriginal)
+    end
+
+    if Hub.State.OptimizeInvisibleMap then
+        for _,object in ipairs(workspace:GetDescendants()) do OptimizeMapObject(object) end
+        EnsureOptimizationBaseplate()
+        UpdateOptimizationBaseplate()
+    else
+        RestoreOptimizationStorage(MapOriginal)
+        if OptimizationBaseplate then
+            OptimizationBaseplate:Destroy()
+            OptimizationBaseplate = nil
+        end
+    end
+
+    if Hub.State.OptimizeHidePlayers then
+        for _,player in ipairs(Players:GetPlayers()) do
+            OptimizePlayerCharacter(player.Character)
+        end
+    else
+        RestoreOptimizationStorage(PlayerOriginal)
+    end
+end
+
+local function ApplyInfiniteZoomOut()
+    pcall(function()
+        LocalPlayer.CameraMaxZoomDistance = Hub.State.InfiniteZoomOut
+            and 1000000
+            or OriginalCameraMaxZoom
+    end)
+end
+
+Connect(workspace.DescendantAdded,function(object)
+    if not Hub.State.OptimizeVFX and not Hub.State.OptimizeInvisibleMap
+        and not Hub.State.OptimizeHidePlayers then return end
+    task.defer(function()
+        if not object or not object.Parent then return end
+        if Hub.State.OptimizeVFX then OptimizeVFXObject(object) end
+        if Hub.State.OptimizeInvisibleMap then OptimizeMapObject(object) end
+        if Hub.State.OptimizeHidePlayers and object:IsA("BasePart") then
+            local character = object:FindFirstAncestorOfClass("Model")
+            local player = character and Players:GetPlayerFromCharacter(character)
+            if player and player ~= LocalPlayer then
+                RememberAndSet(PlayerOriginal,object,"LocalTransparencyModifier",1)
+            end
+        end
+    end)
+end)
+
+Connect(RunService.RenderStepped,function()
+    if Hub.State.OptimizeInvisibleMap then
+        UpdateOptimizationBaseplate()
+    end
+end)
+
+Hub.OptimizationCleanup = function()
+    RestoreOptimizationStorage(VFXOriginal)
+    RestoreOptimizationStorage(MapOriginal)
+    RestoreOptimizationStorage(PlayerOriginal)
+    if OptimizationBaseplate then
+        OptimizationBaseplate:Destroy()
+        OptimizationBaseplate = nil
+    end
+    pcall(function()
+        LocalPlayer.CameraMaxZoomDistance = OriginalCameraMaxZoom
+    end)
+end
+
+Section(Settings,"Optimization")
+
+Toggle(Settings,"Safe Performance","Disable particles, beams, trails, lights, textures, and shadows locally.",false,function(v)
+    Hub.State.OptimizeVFX = v
+    ApplyOptimization()
+end)
+
+Toggle(Settings,"Extreme Invisible Map","Hide map geometry locally while preserving collision and bot raycasts.",false,function(v)
+    Hub.State.OptimizeInvisibleMap = v
+    ApplyOptimization()
+end)
+
+Toggle(Settings,"Hide Other Players","Hide other player characters locally for extra rendering performance.",false,function(v)
+    Hub.State.OptimizeHidePlayers = v
+    ApplyOptimization()
+end)
+
+Toggle(Settings,"Infinite Zoom Out","Allow extremely distant third-person camera zoom.",false,function(v)
+    Hub.State.InfiniteZoomOut = v
+    ApplyInfiniteZoomOut()
+end)
+
+Section(Settings,"Configuration")
+
+local ConfigSlots = {}
+for index = 1,20 do ConfigSlots[index] = "Config "..index end
+if not table.find(ConfigSlots,Hub.State.SelectedConfig) then
+    Hub.State.SelectedConfig = ConfigSlots[1]
+end
+
+local function ConfigDisplayText(slot)
+    local index = table.find(ConfigSlots,slot) or 1
+    return string.format("%02d • %s",index,Hub.GetConfigDisplayName(slot))
+end
+
+local ConfigCard = Card(Settings,58)
+local ConfigTitle = Instance.new("TextLabel")
+ConfigTitle.BackgroundTransparency = 1
+ConfigTitle.Position = UDim2.fromOffset(13,6)
+ConfigTitle.Size = UDim2.new(1,-170,0,20)
+ConfigTitle.Font = Enum.Font.Gotham
+ConfigTitle.Text = "Config Slot"
+ConfigTitle.TextSize = 12
+ConfigTitle.TextColor3 = Theme.Text
+ConfigTitle.TextXAlignment = Enum.TextXAlignment.Left
+ConfigTitle.Parent = ConfigCard
+
+local ConfigDescription = Instance.new("TextLabel")
+ConfigDescription.BackgroundTransparency = 1
+ConfigDescription.Position = UDim2.fromOffset(13,29)
+ConfigDescription.Size = UDim2.new(1,-235,0,16)
+ConfigDescription.Font = Enum.Font.Gotham
+ConfigDescription.Text = "Choose one of twenty independent saved profiles."
+ConfigDescription.TextSize = 9
+ConfigDescription.TextColor3 = Theme.Muted
+ConfigDescription.TextXAlignment = Enum.TextXAlignment.Left
+ConfigDescription.Parent = ConfigCard
+
+local ConfigPrevious = Instance.new("TextButton")
+ConfigPrevious.Position = UDim2.new(1,-230,0,14)
+ConfigPrevious.Size = UDim2.fromOffset(28,30)
+ConfigPrevious.BackgroundColor3 = Theme.Card2
+ConfigPrevious.BorderSizePixel = 0
+ConfigPrevious.Font = Enum.Font.GothamBold
+ConfigPrevious.Text = "<"
+ConfigPrevious.TextSize = 13
+ConfigPrevious.TextColor3 = Theme.Text
+ConfigPrevious.Parent = ConfigCard
+Round(ConfigPrevious,5)
+
+local ConfigValue = Instance.new("TextLabel")
+ConfigValue.Position = UDim2.new(1,-198,0,14)
+ConfigValue.Size = UDim2.fromOffset(154,30)
+ConfigValue.BackgroundColor3 = Theme.Card2
+ConfigValue.BorderSizePixel = 0
+ConfigValue.Font = Enum.Font.GothamBold
+ConfigValue.Text = ConfigDisplayText(Hub.State.SelectedConfig)
+ConfigValue.TextSize = 9
+ConfigValue.TextColor3 = Theme.Text
+ConfigValue.Parent = ConfigCard
+Round(ConfigValue,5)
+
+local ConfigNext = Instance.new("TextButton")
+ConfigNext.Position = UDim2.new(1,-40,0,14)
+ConfigNext.Size = UDim2.fromOffset(28,30)
+ConfigNext.BackgroundColor3 = Theme.Card2
+ConfigNext.BorderSizePixel = 0
+ConfigNext.Font = Enum.Font.GothamBold
+ConfigNext.Text = ">"
+ConfigNext.TextSize = 13
+ConfigNext.TextColor3 = Theme.Text
+ConfigNext.Parent = ConfigCard
+Round(ConfigNext,5)
+
+local ConfigNameBox
+local function SelectConfigOffset(offset)
+    local index = table.find(ConfigSlots,Hub.State.SelectedConfig) or 1
+    index = ((index-1+offset)%#ConfigSlots)+1
+    Hub.State.SelectedConfig = ConfigSlots[index]
+    ConfigValue.Text = ConfigDisplayText(Hub.State.SelectedConfig)
+    if ConfigNameBox then
+        ConfigNameBox.Text = Hub.GetConfigDisplayName(Hub.State.SelectedConfig)
+    end
+    SaveSettings()
+end
+
+Connect(ConfigPrevious.MouseButton1Click,function() SelectConfigOffset(-1) end)
+Connect(ConfigNext.MouseButton1Click,function() SelectConfigOffset(1) end)
+
+local ConfigNameCard = Card(Settings,62)
+local ConfigNameTitle = Instance.new("TextLabel")
+ConfigNameTitle.BackgroundTransparency = 1
+ConfigNameTitle.Position = UDim2.fromOffset(13,6)
+ConfigNameTitle.Size = UDim2.new(1,-230,0,20)
+ConfigNameTitle.Font = Enum.Font.Gotham
+ConfigNameTitle.Text = "Config Name"
+ConfigNameTitle.TextSize = 12
+ConfigNameTitle.TextColor3 = Theme.Text
+ConfigNameTitle.TextXAlignment = Enum.TextXAlignment.Left
+ConfigNameTitle.Parent = ConfigNameCard
+
+local ConfigNameDescription = Instance.new("TextLabel")
+ConfigNameDescription.BackgroundTransparency = 1
+ConfigNameDescription.Position = UDim2.fromOffset(13,29)
+ConfigNameDescription.Size = UDim2.new(1,-230,0,18)
+ConfigNameDescription.Font = Enum.Font.Gotham
+ConfigNameDescription.Text = "Rename the selected slot without changing its saved file."
+ConfigNameDescription.TextSize = 9
+ConfigNameDescription.TextColor3 = Theme.Muted
+ConfigNameDescription.TextXAlignment = Enum.TextXAlignment.Left
+ConfigNameDescription.Parent = ConfigNameCard
+
+ConfigNameBox = Instance.new("TextBox")
+ConfigNameBox.Position = UDim2.new(1,-214,0,15)
+ConfigNameBox.Size = UDim2.fromOffset(145,32)
+ConfigNameBox.BackgroundColor3 = Theme.Card2
+ConfigNameBox.BorderSizePixel = 0
+ConfigNameBox.ClearTextOnFocus = false
+ConfigNameBox.Font = Enum.Font.Gotham
+ConfigNameBox.PlaceholderText = "Config name"
+ConfigNameBox.Text = Hub.GetConfigDisplayName(Hub.State.SelectedConfig)
+ConfigNameBox.TextColor3 = Theme.Text
+ConfigNameBox.PlaceholderColor3 = Theme.Muted
+ConfigNameBox.TextSize = 10
+ConfigNameBox.Parent = ConfigNameCard
+Round(ConfigNameBox,5)
+
+local ConfigRenameButton = Instance.new("TextButton")
+ConfigRenameButton.Position = UDim2.new(1,-63,0,15)
+ConfigRenameButton.Size = UDim2.fromOffset(50,32)
+ConfigRenameButton.BackgroundColor3 = Theme.Card2
+ConfigRenameButton.BorderSizePixel = 0
+ConfigRenameButton.Font = Enum.Font.GothamBold
+ConfigRenameButton.Text = "SET"
+ConfigRenameButton.TextColor3 = Theme.Text
+ConfigRenameButton.TextSize = 10
+ConfigRenameButton.Parent = ConfigNameCard
+Round(ConfigRenameButton,5)
+
+local function RenameSelectedConfig()
+    local name = ConfigNameBox.Text:gsub("^%s+",""):gsub("%s+$",""):sub(1,24)
+    if name == "" then name = Hub.State.SelectedConfig end
+    Hub.ConfigNames[Hub.State.SelectedConfig] = name
+    ConfigNameBox.Text = name
+    ConfigValue.Text = ConfigDisplayText(Hub.State.SelectedConfig)
+    Hub.SaveConfigNames()
+end
+
+Connect(ConfigRenameButton.MouseButton1Click,RenameSelectedConfig)
+Connect(ConfigNameBox.FocusLost,function(enterPressed)
+    if enterPressed then RenameSelectedConfig() end
+end)
+
+local ConfigStatus
+local function ConfigActionCard(title,description,buttonText,callback)
+    local card = Card(Settings,62)
+    local titleLabel = Instance.new("TextLabel")
+    titleLabel.BackgroundTransparency = 1
+    titleLabel.Position = UDim2.fromOffset(13,6)
+    titleLabel.Size = UDim2.new(1,-145,0,20)
+    titleLabel.Font = Enum.Font.Gotham
+    titleLabel.Text = title
+    titleLabel.TextSize = 12
+    titleLabel.TextColor3 = Theme.Text
+    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    titleLabel.Parent = card
+    local descriptionLabel = Instance.new("TextLabel")
+    descriptionLabel.BackgroundTransparency = 1
+    descriptionLabel.Position = UDim2.fromOffset(13,29)
+    descriptionLabel.Size = UDim2.new(1,-145,0,18)
+    descriptionLabel.Font = Enum.Font.Gotham
+    descriptionLabel.Text = description
+    descriptionLabel.TextSize = 9
+    descriptionLabel.TextColor3 = Theme.Muted
+    descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
+    descriptionLabel.Parent = card
+    local button = Instance.new("TextButton")
+    button.AnchorPoint = Vector2.new(1,0.5)
+    button.Position = UDim2.new(1,-13,0.5,0)
+    button.Size = UDim2.fromOffset(120,32)
+    button.BackgroundColor3 = Theme.Card2
+    button.BorderSizePixel = 0
+    button.Font = Enum.Font.GothamBold
+    button.Text = buttonText
+    button.TextSize = 10
+    button.TextColor3 = Theme.Text
+    button.Parent = card
+    Round(button,5)
+    Connect(button.MouseButton1Click,callback)
+end
+
+local function ApplyLoadedConfigToControls()
+    for key,setter in pairs(Hub.SettingControls) do
+        local value = Hub.State[key]
+        if value ~= nil then
+            pcall(setter,value,true)
+        end
+    end
+    ConfigValue.Text = ConfigDisplayText(Hub.State.SelectedConfig)
+    SaveSettings()
+end
+
+ConfigActionCard("Save Config","Store every current script setting in this slot.","SAVE",function()
+    local ok,err = Hub.SaveNamedConfig(Hub.State.SelectedConfig)
+    ConfigStatus.Text = ok
+        and (Hub.GetConfigDisplayName(Hub.State.SelectedConfig).." saved successfully.")
+        or ("Save failed: "..tostring(err))
+end)
+
+ConfigActionCard("Load Config","Apply the selected slot immediately to the full script.","LOAD",function()
+    local ok,err = Hub.LoadNamedConfigIntoState(Hub.State.SelectedConfig)
+    if ok then ApplyLoadedConfigToControls() end
+    ConfigStatus.Text = ok
+        and (Hub.GetConfigDisplayName(Hub.State.SelectedConfig).." loaded successfully.")
+        or ("Load failed: "..tostring(err))
+end)
+
+do
+    local TransferCard = Card(Settings,146)
+    local TransferTitle = Instance.new("TextLabel")
+    TransferTitle.BackgroundTransparency = 1
+    TransferTitle.Position = UDim2.fromOffset(13,6)
+    TransferTitle.Size = UDim2.new(1,-26,0,20)
+    TransferTitle.Font = Enum.Font.Gotham
+    TransferTitle.Text = "Export / Import Config"
+    TransferTitle.TextSize = 12
+    TransferTitle.TextColor3 = Theme.Text
+    TransferTitle.TextXAlignment = Enum.TextXAlignment.Left
+    TransferTitle.Parent = TransferCard
+
+    local TransferBox = Instance.new("TextBox")
+    TransferBox.Position = UDim2.fromOffset(13,31)
+    TransferBox.Size = UDim2.new(1,-26,0,67)
+    TransferBox.BackgroundColor3 = Theme.Card2
+    TransferBox.BorderSizePixel = 0
+    TransferBox.ClearTextOnFocus = false
+    TransferBox.MultiLine = true
+    TransferBox.Font = Enum.Font.Code
+    TransferBox.PlaceholderText = "Exported config JSON appears here. Paste JSON here to import."
+    TransferBox.Text = ""
+    TransferBox.TextColor3 = Theme.Text
+    TransferBox.PlaceholderColor3 = Theme.Muted
+    TransferBox.TextSize = 9
+    TransferBox.TextWrapped = false
+    TransferBox.TextXAlignment = Enum.TextXAlignment.Left
+    TransferBox.TextYAlignment = Enum.TextYAlignment.Top
+    TransferBox.Parent = TransferCard
+    Round(TransferBox,5)
+
+    local ExportButton = Instance.new("TextButton")
+    ExportButton.Position = UDim2.fromOffset(13,106)
+    ExportButton.Size = UDim2.new(0.5,-17,0,29)
+    ExportButton.BackgroundColor3 = Theme.Card2
+    ExportButton.BorderSizePixel = 0
+    ExportButton.Font = Enum.Font.GothamBold
+    ExportButton.Text = "EXPORT + COPY"
+    ExportButton.TextColor3 = Theme.Text
+    ExportButton.TextSize = 10
+    ExportButton.Parent = TransferCard
+    Round(ExportButton,5)
+
+    local ImportButton = Instance.new("TextButton")
+    ImportButton.Position = UDim2.new(0.5,4,0,106)
+    ImportButton.Size = UDim2.new(0.5,-17,0,29)
+    ImportButton.BackgroundColor3 = Theme.Card2
+    ImportButton.BorderSizePixel = 0
+    ImportButton.Font = Enum.Font.GothamBold
+    ImportButton.Text = "IMPORT + LOAD"
+    ImportButton.TextColor3 = Theme.Text
+    ImportButton.TextSize = 10
+    ImportButton.Parent = TransferCard
+    Round(ImportButton,5)
+
+    Connect(ExportButton.MouseButton1Click,function()
+        local payload
+        local pathName = Hub.State.SelectedConfig:gsub("[^%w_-]","_")
+        local path = "FTAL_"..pathName..".json"
+        if type(isfile) == "function" and type(readfile) == "function" and isfile(path) then
+            local ok,result = pcall(readfile,path)
+            if ok then payload = result end
+        end
+        if not payload then
+            payload = game:GetService("HttpService"):JSONEncode(Hub.SerializeSettings(false))
+        end
+        TransferBox.Text = payload
+        local copied = false
+        if type(setclipboard) == "function" then
+            copied = pcall(setclipboard,payload)
+        end
+        ConfigStatus.Text = copied
+            and (Hub.GetConfigDisplayName(Hub.State.SelectedConfig).." exported and copied.")
+            or "Exported into the transfer box; select and copy it manually."
+    end)
+
+    Connect(ImportButton.MouseButton1Click,function()
+        local payload = TransferBox.Text
+        if payload == "" and type(getclipboard) == "function" then
+            local ok,result = pcall(getclipboard)
+            if ok then payload = result end
+        end
+        payload = tostring(payload or "")
+            :gsub("^```[%w_-]*%s*","")
+            :gsub("%s*```$","")
+        local ok,data = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(payload)
+        end)
+        if ok and type(data) == "table" then
+            Hub.ApplySerializedSettings(data,true)
+            ApplyLoadedConfigToControls()
+            Hub.SaveNamedConfig(Hub.State.SelectedConfig)
+            ConfigStatus.Text = Hub.GetConfigDisplayName(Hub.State.SelectedConfig)
+                .." imported, saved, and loaded."
+        else
+            ConfigStatus.Text = "Import failed: paste valid exported config JSON."
+        end
+    end)
+end
+
+Toggle(Settings,"Auto Load Config","Load the selected config whenever this script starts.",false,function(v)
+    Hub.State.AutoLoadConfig = v
+end)
+
+local ConfigStatusCard = Card(Settings,42)
+ConfigStatus = Instance.new("TextLabel")
+ConfigStatus.BackgroundTransparency = 1
+ConfigStatus.Position = UDim2.fromOffset(13,0)
+ConfigStatus.Size = UDim2.new(1,-26,1,0)
+ConfigStatus.Font = Enum.Font.Gotham
+ConfigStatus.Text = Hub.State.AutoLoadConfig
+    and ("Auto Load ready: "..Hub.GetConfigDisplayName(Hub.State.SelectedConfig))
+    or "Choose a slot, then Save or Load."
+ConfigStatus.TextSize = 9
+ConfigStatus.TextColor3 = Theme.Muted
+ConfigStatus.TextXAlignment = Enum.TextXAlignment.Left
+ConfigStatus.TextWrapped = true
+ConfigStatus.Parent = ConfigStatusCard
+end -- settings scope; controls and callbacks retain their captured state
 
 --============================================================
 -- ESP IMPLEMENTATION
